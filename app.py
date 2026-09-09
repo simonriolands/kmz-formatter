@@ -66,15 +66,18 @@ def proses_kmz(input_path, output_path, extract_dir):
     if not file_kml:
         raise Exception("File KML tidak ditemukan di dalam KMZ.")
 
+    # Mendaftarkan namespace agar ElementTree bisa membaca dan menulis ekstensi Google (gx) dengan benar
     namespace_kml = "http://www.opengis.net/kml/2.2"
+    namespace_gx = "http://www.google.com/kml/ext/2.2"
     ET.register_namespace('', namespace_kml)
-    ns = {'kml': namespace_kml}
+    ET.register_namespace('gx', namespace_gx)
+    ns = {'kml': namespace_kml, 'gx': namespace_gx}
     
     tree = ET.parse(file_kml)
     root = tree.getroot()
 
     # ==========================================
-    # 1. PEMBERSIHAN GLOBAL: TimeStamp, TimeSpan, & ExtendedData (TANPA TERKECUALI)
+    # 1. PEMBERSIHAN GLOBAL: TimeStamp, TimeSpan, & ExtendedData
     # ==========================================
     for placemark in root.findall('.//kml:Placemark', ns):
         for hapus_tag in ['kml:TimeStamp', 'kml:TimeSpan', 'kml:ExtendedData']:
@@ -121,40 +124,24 @@ def proses_kmz(input_path, output_path, extract_dir):
                     folder.append(sisa_folder)
 
     # ==========================================
-    # 3. PROSES UTAMA: Gaya, Prefix, & Penghapusan Bersyarat
+    # 3. PROSES UTAMA: Gaya, Prefix, & PENGHAPUSAN POPUP TOTAL
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text:
             nama_folder = nama_folder_elem.text.strip().upper() 
             
-            # --- ATURAN DISKUSI YANG BENAR ---
-            # 1. Hapus Description (dan Snippet) JIKA BUKAN FDT, BUKAN CABLE, dan BUKAN BOUNDARY
-            hapus_deskripsi = ("FDT" not in nama_folder) and ("CABLE" not in nama_folder) and ("BOUNDARY" not in nama_folder)
+            # CEK PENGECUALIAN: Hanya berlaku jika BUKAN FDT, BUKAN CABLE, dan BUKAN BOUNDARY
+            hapus_atribut = ("FDT" not in nama_folder) and ("CABLE" not in nama_folder) and ("BOUNDARY" not in nama_folder)
             
-            # 2. Hapus BalloonStyle JIKA BUKAN FDT dan BUKAN CABLE
-            hapus_balloon = ("FDT" not in nama_folder) and ("CABLE" not in nama_folder)
-
             for placemark in folder.findall('./kml:Placemark', ns):
                 
-                # --- EKSEKUSI PENGHAPUSAN DESKRIPSI & SNIPPET ---
-                if hapus_deskripsi:
-                    desc_elem = placemark.find('kml:description', ns)
-                    if desc_elem is not None:
-                        placemark.remove(desc_elem)
-                    
-                    # Tambahan: Hapus Snippet untuk menghilangkan sisa efek garis bawah biru
-                    snippet_elem = placemark.find('kml:Snippet', ns)
-                    if snippet_elem is not None:
-                        placemark.remove(snippet_elem)
-
-                # --- EKSEKUSI PENGHAPUSAN BALLOONSTYLE ---
-                if hapus_balloon:
-                    for elem in placemark.iter():
-                        children = list(elem)
-                        for child in children:
-                            if child.tag == f'{{{namespace_kml}}}BalloonStyle':
-                                elem.remove(child)
+                if hapus_atribut:
+                    # Bersihkan atribut deskripsi, snippet, dan paksaan visibilitas pop-up (gx:balloonVisibility)
+                    for tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility']:
+                        elem_to_remove = placemark.find(tag, ns)
+                        if elem_to_remove is not None:
+                            placemark.remove(elem_to_remove)
 
                 # --- LOGIKA A: TITIK BIASA ---
                 if nama_folder in style_rules_titik:
@@ -172,6 +159,12 @@ def proses_kmz(input_path, output_path, extract_dir):
                     if old_style is not None: placemark.remove(old_style)
 
                     new_style = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
+                    
+                    # SUNTIKKAN PERINTAH MEMATIKAN POPUP TOTAL DI GOOGLE EARTH
+                    if hapus_atribut:
+                        balloon_style = ET.SubElement(new_style, '{%s}BalloonStyle' % namespace_kml)
+                        ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml).text = "hide"
+
                     icon_style = ET.SubElement(new_style, '{%s}IconStyle' % namespace_kml)
                     ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(aturan['warna'])
                     ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = aturan['ukuran']
@@ -195,6 +188,17 @@ def proses_kmz(input_path, output_path, extract_dir):
                     
                     style_elem = placemark.find('kml:Style', ns)
                     if style_elem is None: style_elem = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
+                    
+                    # SUNTIKKAN PERINTAH MEMATIKAN POPUP UNTUK GARIS (Jika Masuk Syarat)
+                    if hapus_atribut:
+                        balloon_style = style_elem.find('kml:BalloonStyle', ns)
+                        if balloon_style is None:
+                            balloon_style = ET.SubElement(style_elem, '{%s}BalloonStyle' % namespace_kml)
+                        disp_mode = balloon_style.find('kml:displayMode', ns)
+                        if disp_mode is None:
+                            disp_mode = ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml)
+                        disp_mode.text = "hide"
+
                     line_style = style_elem.find('kml:LineStyle', ns)
                     if line_style is None: line_style = ET.SubElement(style_elem, '{%s}LineStyle' % namespace_kml)
                     
@@ -245,17 +249,11 @@ def proses_kmz(input_path, output_path, extract_dir):
             for titik_asli in folder.findall('./kml:Placemark', ns): 
                 placemark_copy = copy.deepcopy(titik_asli) 
 
-                # PENTING: Hapus atribut sisa dari FDT agar tidak terbawa ke Slack Hanger!
-                for hapus_tag in ['kml:description', 'kml:Snippet']:
+                # Hapus atribut sisa dari FDT agar tidak terbawa ke Slack Hanger!
+                for hapus_tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility']:
                     tag_elem = placemark_copy.find(hapus_tag, ns)
                     if tag_elem is not None:
                         placemark_copy.remove(tag_elem)
-                
-                for elem in placemark_copy.iter():
-                    children = list(elem)
-                    for child in children:
-                        if child.tag == f'{{{namespace_kml}}}BalloonStyle':
-                            elem.remove(child)
 
                 # Ubah nama menjadi EXT.SLACK.FDT
                 nama_elem = placemark_copy.find('kml:name', ns)
@@ -268,6 +266,11 @@ def proses_kmz(input_path, output_path, extract_dir):
                 if old_style is not None: placemark_copy.remove(old_style)
 
                 new_style = ET.SubElement(placemark_copy, '{%s}Style' % namespace_kml)
+                
+                # Matikan Pop-up pada hasil copy (Slack Hanger)
+                balloon_style = ET.SubElement(new_style, '{%s}BalloonStyle' % namespace_kml)
+                ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml).text = "hide"
+
                 icon_style = ET.SubElement(new_style, '{%s}IconStyle' % namespace_kml)
                 ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color("#FFFFFF")
                 ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.8"
@@ -309,7 +312,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, kabel, serta pembersihan atribut (TimeStamp, Description, BalloonStyle, Snippet) secara spesifik.")
+st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, kabel, serta mematikan pop-up yang tidak perlu.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
