@@ -73,13 +73,25 @@ def proses_kmz(input_path, output_path, extract_dir):
     tree = ET.parse(file_kml)
     root = tree.getroot()
 
-    # Berishkan Global ExtendedData
+    # ==========================================
+    # 1. PEMBERSIHAN GLOBAL: TimeStamp, TimeSpan, & ExtendedData (TANPA TERKECUALI)
+    # ==========================================
     for placemark in root.findall('.//kml:Placemark', ns):
+        timestamp_elem = placemark.find('kml:TimeStamp', ns)
+        if timestamp_elem is not None:
+            placemark.remove(timestamp_elem)
+            
+        timespan_elem = placemark.find('kml:TimeSpan', ns)
+        if timespan_elem is not None:
+            placemark.remove(timespan_elem)
+            
         ext_data = placemark.find('kml:ExtendedData', ns)
         if ext_data is not None:
             placemark.remove(ext_data)
 
-    # Pra-pemrosesan Folder LINE
+    # ==========================================
+    # 2. PRA-PEMROSESAN: Tambah & Urutkan Folder LINE
+    # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text:
@@ -115,13 +127,27 @@ def proses_kmz(input_path, output_path, extract_dir):
                 for sisa_nama, sisa_folder in sub_folders_dict.items():
                     folder.append(sisa_folder)
 
-    # Proses Utama
+    # ==========================================
+    # 3. PROSES UTAMA: Gaya, Prefix, & Penghapusan Deskripsi Selektif
+    # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text:
             nama_folder = nama_folder_elem.text.strip().upper() 
             
-            for placemark in folder.findall('.//kml:Placemark', ns):
+            # CEK: Apakah ini folder yang BOLEH PUNYA DESKRIPSI? (FDT atau mengandung CABLE)
+            hapus_deskripsi = ("FDT" not in nama_folder) and ("CABLE" not in nama_folder)
+
+            # PENTING: Gunakan ./kml:Placemark agar hanya mengecek anak langsung (menghindari bug nested folder)
+            for placemark in folder.findall('./kml:Placemark', ns):
+                
+                # HAPUS <description> jika folder ini BUKAN FDT dan BUKAN CABLE
+                if hapus_deskripsi:
+                    desc_elem = placemark.find('kml:description', ns)
+                    if desc_elem is not None:
+                        placemark.remove(desc_elem)
+
+                # --- LOGIKA A: TITIK BIASA ---
                 if nama_folder in style_rules_titik:
                     aturan = style_rules_titik[nama_folder]
                     if nama_folder in folder_existing_pole:
@@ -146,6 +172,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                     ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(aturan['warna_teks'])
                     ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = aturan['ukuran_teks']
 
+                # --- LOGIKA B: GARIS/KABEL ---
                 elif nama_folder in style_rules_garis:
                     aturan = style_rules_garis[nama_folder]
                     nama_placemark_elem = placemark.find('kml:name', ns)
@@ -172,7 +199,9 @@ def proses_kmz(input_path, output_path, extract_dir):
                     if width_elem is None: width_elem = ET.SubElement(line_style, '{%s}width' % namespace_kml)
                     width_elem.text = aturan['ketebalan']
             
+                # --- LOGIKA D: FOLDER FDT BERDASARKAN KOMENTAR ---
                 elif nama_folder == "FDT":
+                    # Karena FDT deskripsinya tidak dihapus, kita bisa mengecek isinya
                     desc_elem = placemark.find('kml:description', ns)
                     desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
                     
@@ -198,17 +227,15 @@ def proses_kmz(input_path, output_path, extract_dir):
                         ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
                         ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
 
-    # Logika Copy FDT ke Slack Hanger Line Pertama
+    # ==========================================
+    # 4. LOGIKA C: Copy FDT ke Slack Hanger Line Pertama
+    # ==========================================
     list_placemark_template = []
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text and nama_folder_elem.text.strip().upper() == "FDT":
-            for titik_asli in folder.findall('.//kml:Placemark', ns):
+            for titik_asli in folder.findall('./kml:Placemark', ns): # Pakai ./kml:Placemark juga di sini agar presisi
                 placemark_copy = copy.deepcopy(titik_asli) 
-                
-                ext_data_copy = placemark_copy.find('kml:ExtendedData', ns)
-                if ext_data_copy is not None:
-                    placemark_copy.remove(ext_data_copy)
 
                 nama_elem = placemark_copy.find('kml:name', ns)
                 if nama_elem is None: nama_elem = ET.SubElement(placemark_copy, '{%s}name' % namespace_kml)
@@ -261,7 +288,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, kabel, serta membersihkan popup ExtendedData secara otomatis.")
+st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, kabel, pembersihan TimeStamp global, serta pembersihan deskripsi selektif.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
