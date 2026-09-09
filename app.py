@@ -77,17 +77,10 @@ def proses_kmz(input_path, output_path, extract_dir):
     # 1. PEMBERSIHAN GLOBAL: TimeStamp, TimeSpan, & ExtendedData (TANPA TERKECUALI)
     # ==========================================
     for placemark in root.findall('.//kml:Placemark', ns):
-        timestamp_elem = placemark.find('kml:TimeStamp', ns)
-        if timestamp_elem is not None:
-            placemark.remove(timestamp_elem)
-            
-        timespan_elem = placemark.find('kml:TimeSpan', ns)
-        if timespan_elem is not None:
-            placemark.remove(timespan_elem)
-            
-        ext_data = placemark.find('kml:ExtendedData', ns)
-        if ext_data is not None:
-            placemark.remove(ext_data)
+        for hapus_tag in ['kml:TimeStamp', 'kml:TimeSpan', 'kml:ExtendedData']:
+            tag_elem = placemark.find(hapus_tag, ns)
+            if tag_elem is not None:
+                placemark.remove(tag_elem)
 
     # ==========================================
     # 2. PRA-PEMROSESAN: Tambah & Urutkan Folder LINE
@@ -128,24 +121,40 @@ def proses_kmz(input_path, output_path, extract_dir):
                     folder.append(sisa_folder)
 
     # ==========================================
-    # 3. PROSES UTAMA: Gaya, Prefix, & Penghapusan Deskripsi Selektif
+    # 3. PROSES UTAMA: Gaya, Prefix, & Penghapusan Bersyarat
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text:
             nama_folder = nama_folder_elem.text.strip().upper() 
             
-            # CEK: Apakah ini folder yang BOLEH PUNYA DESKRIPSI? (FDT atau mengandung CABLE)
-            hapus_deskripsi = ("FDT" not in nama_folder) and ("CABLE" not in nama_folder)
+            # --- ATURAN DISKUSI YANG BENAR ---
+            # 1. Hapus Description (dan Snippet) JIKA BUKAN FDT, BUKAN CABLE, dan BUKAN BOUNDARY
+            hapus_deskripsi = ("FDT" not in nama_folder) and ("CABLE" not in nama_folder) and ("BOUNDARY" not in nama_folder)
+            
+            # 2. Hapus BalloonStyle JIKA BUKAN FDT dan BUKAN CABLE
+            hapus_balloon = ("FDT" not in nama_folder) and ("CABLE" not in nama_folder)
 
-            # PENTING: Gunakan ./kml:Placemark agar hanya mengecek anak langsung (menghindari bug nested folder)
             for placemark in folder.findall('./kml:Placemark', ns):
                 
-                # HAPUS <description> jika folder ini BUKAN FDT dan BUKAN CABLE
+                # --- EKSEKUSI PENGHAPUSAN DESKRIPSI & SNIPPET ---
                 if hapus_deskripsi:
                     desc_elem = placemark.find('kml:description', ns)
                     if desc_elem is not None:
                         placemark.remove(desc_elem)
+                    
+                    # Tambahan: Hapus Snippet untuk menghilangkan sisa efek garis bawah biru
+                    snippet_elem = placemark.find('kml:Snippet', ns)
+                    if snippet_elem is not None:
+                        placemark.remove(snippet_elem)
+
+                # --- EKSEKUSI PENGHAPUSAN BALLOONSTYLE ---
+                if hapus_balloon:
+                    for elem in placemark.iter():
+                        children = list(elem)
+                        for child in children:
+                            if child.tag == f'{{{namespace_kml}}}BalloonStyle':
+                                elem.remove(child)
 
                 # --- LOGIKA A: TITIK BIASA ---
                 if nama_folder in style_rules_titik:
@@ -201,7 +210,6 @@ def proses_kmz(input_path, output_path, extract_dir):
             
                 # --- LOGIKA D: FOLDER FDT BERDASARKAN KOMENTAR ---
                 elif nama_folder == "FDT":
-                    # Karena FDT deskripsinya tidak dihapus, kita bisa mengecek isinya
                     desc_elem = placemark.find('kml:description', ns)
                     desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
                     
@@ -234,9 +242,22 @@ def proses_kmz(input_path, output_path, extract_dir):
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text and nama_folder_elem.text.strip().upper() == "FDT":
-            for titik_asli in folder.findall('./kml:Placemark', ns): # Pakai ./kml:Placemark juga di sini agar presisi
+            for titik_asli in folder.findall('./kml:Placemark', ns): 
                 placemark_copy = copy.deepcopy(titik_asli) 
 
+                # PENTING: Hapus atribut sisa dari FDT agar tidak terbawa ke Slack Hanger!
+                for hapus_tag in ['kml:description', 'kml:Snippet']:
+                    tag_elem = placemark_copy.find(hapus_tag, ns)
+                    if tag_elem is not None:
+                        placemark_copy.remove(tag_elem)
+                
+                for elem in placemark_copy.iter():
+                    children = list(elem)
+                    for child in children:
+                        if child.tag == f'{{{namespace_kml}}}BalloonStyle':
+                            elem.remove(child)
+
+                # Ubah nama menjadi EXT.SLACK.FDT
                 nama_elem = placemark_copy.find('kml:name', ns)
                 if nama_elem is None: nama_elem = ET.SubElement(placemark_copy, '{%s}name' % namespace_kml)
                 nama_elem.text = "EXT.SLACK.FDT"
@@ -288,7 +309,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, kabel, pembersihan TimeStamp global, serta pembersihan deskripsi selektif.")
+st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, kabel, serta pembersihan atribut (TimeStamp, Description, BalloonStyle, Snippet) secara spesifik.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
