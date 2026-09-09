@@ -134,12 +134,10 @@ def proses_kmz(input_path, output_path, extract_dir):
         if nama_folder_elem is not None and nama_folder_elem.text:
             nama_folder = nama_folder_elem.text.strip().upper() 
             
-            # KECUALIAN 3: FDT, CABLE (mengandung kata CABLE), dan BOUNDARY
             is_kecuali = ("FDT" in nama_folder) or ("CABLE" in nama_folder) or ("BOUNDARY" in nama_folder)
             
             for placemark in folder.findall('./kml:Placemark', ns):
                 
-                # Jika BUKAN bagian dari 3 pengecualian, bersihkan total pop-up/deskripsinya
                 if not is_kecuali:
                     for tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility']:
                         elem_to_remove = placemark.find(tag, ns)
@@ -163,7 +161,6 @@ def proses_kmz(input_path, output_path, extract_dir):
 
                     new_style = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
                     
-                    # Jika bukan pengecualian, sembunyikan pop-up secara mutlak
                     if not is_kecuali:
                         balloon_style = ET.SubElement(new_style, '{%s}BalloonStyle' % namespace_kml)
                         ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml).text = "hide"
@@ -173,6 +170,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                     ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = aturan['ukuran']
                     icon = ET.SubElement(icon_style, '{%s}Icon' % namespace_kml)
                     ET.SubElement(icon, '{%s}href' % namespace_kml).text = aturan['icon']
+                    
                     label_style = ET.SubElement(new_style, '{%s}LabelStyle' % namespace_kml)
                     ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(aturan['warna_teks'])
                     ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = aturan['ukuran_teks']
@@ -187,7 +185,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                     if nama_folder == "DISTRIBUTION CABLE":
                         if "24C/2T" in nama_placemark: warna_hex_sementara = "#00FF00"
                         elif "36C/3T" in nama_placemark: warna_hex_sementara = "#FF00FF"
-                        elif "48C/4T" in nama_placemark: warna_hex_sementara = "#AA00FF"
+                        elif "48C/4T" in nama_hex_sementara: warna_hex_sementara = "#AA00FF"
                     
                     style_elem = placemark.find('kml:Style', ns)
                     if style_elem is None: style_elem = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
@@ -251,6 +249,11 @@ def proses_kmz(input_path, output_path, extract_dir):
             for titik_asli in folder.findall('./kml:Placemark', ns): 
                 placemark_copy = copy.deepcopy(titik_asli) 
 
+                for hapus_tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility']:
+                    tag_elem = placemark_copy.find(hapus_tag, ns)
+                    if tag_elem is not None:
+                        placemark_copy.remove(tag_elem)
+
                 nama_elem = placemark_copy.find('kml:name', ns)
                 if nama_elem is None: nama_elem = ET.SubElement(placemark_copy, '{%s}name' % namespace_kml)
                 nama_elem.text = "EXT.SLACK.FDT"
@@ -261,6 +264,10 @@ def proses_kmz(input_path, output_path, extract_dir):
                 if old_style is not None: placemark_copy.remove(old_style)
 
                 new_style = ET.SubElement(placemark_copy, '{%s}Style' % namespace_kml)
+                
+                balloon_style = ET.SubElement(new_style, '{%s}BalloonStyle' % namespace_kml)
+                ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml).text = "hide"
+
                 icon_style = ET.SubElement(new_style, '{%s}IconStyle' % namespace_kml)
                 ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color("#FFFFFF")
                 ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.8"
@@ -302,7 +309,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, kabel, serta membersihkan pop-up folder dan placemark secara selektif.")
+st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, keselarasan warna teks & ikon, serta pembersihan pop-up secara selektif.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -325,7 +332,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah bersih dari pop-up.")
+                st.success("Berhasil! File KMZ Anda sudah bersih dan sesuai standar.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
