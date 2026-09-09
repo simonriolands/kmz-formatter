@@ -6,6 +6,9 @@ import xml.etree.ElementTree as ET
 import copy
 import tempfile
 
+# ==========================================
+# FUNGSI UTAMA PEMROSESAN KMZ
+# ==========================================
 def hex_to_kml_color(hex_color):
     if not hex_color or str(hex_color).strip() == "":
         return "" 
@@ -18,6 +21,7 @@ def hex_to_kml_color(hex_color):
     return hex_color
 
 def proses_kmz(input_path, output_path, extract_dir):
+    # Definisi warna sudah diatur sama antara ikon dan teks
     style_rules_titik = {
         "FAT": {"warna": "#FFFF00", "warna_teks": "#FFFF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/triangle.png"},
         "HP COVER": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
@@ -71,6 +75,27 @@ def proses_kmz(input_path, output_path, extract_dir):
     
     tree = ET.parse(file_kml)
     root = tree.getroot()
+
+    # PETA HIERARKI: Untuk melacak folder induk dari sub-folder (seperti A01 milik HP COVER)
+    parent_map = {c: p for p in root.iter() for c in p}
+
+    def get_kategori(folder_elem):
+        curr = folder_elem
+        while curr is not None:
+            if curr.tag == f'{{{namespace_kml}}}Folder':
+                nama_elem = curr.find('kml:name', ns)
+                if nama_elem is not None and nama_elem.text:
+                    nama = nama_elem.text.strip().upper()
+                    if (nama in style_rules_titik or 
+                        nama in style_rules_garis or 
+                        nama == "FDT" or 
+                        "CABLE" in nama or 
+                        "BOUNDARY" in nama):
+                        return nama
+            curr = parent_map.get(curr)
+        
+        nama_elem = folder_elem.find('kml:name', ns)
+        return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
     # ==========================================
     # 1. HAPUS SEMUA BALLOONSTYLE DI LEVEL FOLDER/DOKUMEN
@@ -127,128 +152,134 @@ def proses_kmz(input_path, output_path, extract_dir):
                     folder.append(sisa_folder)
 
     # ==========================================
-    # 4. PROSES UTAMA & KONTROL POP-UP BERDASARKAN 3 PENGECUALIAN
+    # 4. PROSES UTAMA & KONTROL POP-UP
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
-        nama_folder_elem = folder.find('kml:name', ns)
-        if nama_folder_elem is not None and nama_folder_elem.text:
-            nama_folder = nama_folder_elem.text.strip().upper() 
+        
+        # Deteksi kategori asli berdasarkan hierarki (Bukan cuma nama subfolder)
+        kategori_efektif = get_kategori(folder)
+        if not kategori_efektif:
+            continue
             
-            is_kecuali = ("FDT" in nama_folder) or ("CABLE" in nama_folder) or ("BOUNDARY" in nama_folder)
+        is_kecuali = ("FDT" in kategori_efektif) or ("CABLE" in kategori_efektif) or ("BOUNDARY" in kategori_efektif)
+        
+        for placemark in folder.findall('./kml:Placemark', ns):
             
-            for placemark in folder.findall('./kml:Placemark', ns):
+            # Bersihkan popup dan deskripsi jika tidak masuk daftar pengecualian
+            if not is_kecuali:
+                for tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility']:
+                    elem_to_remove = placemark.find(tag, ns)
+                    if elem_to_remove is not None:
+                        placemark.remove(elem_to_remove)
+
+            # --- LOGIKA A: TITIK BIASA ---
+            if kategori_efektif in style_rules_titik:
+                aturan = style_rules_titik[kategori_efektif]
+                if kategori_efektif in folder_existing_pole:
+                    nama_placemark_elem = placemark.find('kml:name', ns)
+                    if nama_placemark_elem is not None and nama_placemark_elem.text:
+                        nama_asli = nama_placemark_elem.text.strip()
+                        if "EXT." not in nama_asli.upper():
+                            nama_placemark_elem.text = "EXT." + nama_asli
+
+                style_url = placemark.find('kml:styleUrl', ns)
+                if style_url is not None: placemark.remove(style_url)
+                old_style = placemark.find('kml:Style', ns)
+                if old_style is not None: placemark.remove(old_style)
+
+                new_style = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
+                
+                # Paksa sembunyi popup
+                if not is_kecuali:
+                    balloon_style = ET.SubElement(new_style, '{%s}BalloonStyle' % namespace_kml)
+                    ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml).text = "hide"
+
+                icon_style = ET.SubElement(new_style, '{%s}IconStyle' % namespace_kml)
+                ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(aturan['warna'])
+                ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = aturan['ukuran']
+                icon = ET.SubElement(icon_style, '{%s}Icon' % namespace_kml)
+                ET.SubElement(icon, '{%s}href' % namespace_kml).text = aturan['icon']
+                
+                # Warna teks kini terjamin tersinkronisasi
+                label_style = ET.SubElement(new_style, '{%s}LabelStyle' % namespace_kml)
+                ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(aturan['warna_teks'])
+                ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = aturan['ukuran_teks']
+
+            # --- LOGIKA B: GARIS/KABEL ---
+            elif kategori_efektif in style_rules_garis:
+                aturan = style_rules_garis[kategori_efektif]
+                nama_placemark_elem = placemark.find('kml:name', ns)
+                nama_placemark = nama_placemark_elem.text.strip().upper() if nama_placemark_elem is not None and nama_placemark_elem.text else ""
+                warna_hex_sementara = aturan['warna'] 
+
+                if kategori_efektif == "DISTRIBUTION CABLE":
+                    if "24C/2T" in nama_placemark: warna_hex_sementara = "#00FF00"
+                    elif "36C/3T" in nama_placemark: warna_hex_sementara = "#FF00FF"
+                    elif "48C/4T" in nama_placemark: warna_hex_sementara = "#AA00FF"
+                
+                style_elem = placemark.find('kml:Style', ns)
+                if style_elem is None: style_elem = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
                 
                 if not is_kecuali:
-                    for tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility']:
-                        elem_to_remove = placemark.find(tag, ns)
-                        if elem_to_remove is not None:
-                            placemark.remove(elem_to_remove)
+                    balloon_style = style_elem.find('kml:BalloonStyle', ns)
+                    if balloon_style is None:
+                        balloon_style = ET.SubElement(style_elem, '{%s}BalloonStyle' % namespace_kml)
+                    disp_mode = balloon_style.find('kml:displayMode', ns)
+                    if disp_mode is None:
+                        disp_mode = ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml)
+                    disp_mode.text = "hide"
 
-                # --- LOGIKA A: TITIK BIASA ---
-                if nama_folder in style_rules_titik:
-                    aturan = style_rules_titik[nama_folder]
-                    if nama_folder in folder_existing_pole:
-                        nama_placemark_elem = placemark.find('kml:name', ns)
-                        if nama_placemark_elem is not None and nama_placemark_elem.text:
-                            nama_asli = nama_placemark_elem.text.strip()
-                            if "EXT." not in nama_asli.upper():
-                                nama_placemark_elem.text = "EXT." + nama_asli
-
+                line_style = style_elem.find('kml:LineStyle', ns)
+                if line_style is None: line_style = ET.SubElement(style_elem, '{%s}LineStyle' % namespace_kml)
+                
+                warna_baru = hex_to_kml_color(warna_hex_sementara)
+                if warna_baru != "":
+                    color_elem = line_style.find('kml:color', ns)
+                    if color_elem is None: color_elem = ET.SubElement(line_style, '{%s}color' % namespace_kml)
+                    color_elem.text = warna_baru
+                
+                width_elem = line_style.find('kml:width', ns)
+                if width_elem is None: width_elem = ET.SubElement(line_style, '{%s}width' % namespace_kml)
+                width_elem.text = aturan['ketebalan']
+        
+            # --- LOGIKA D: FDT ---
+            elif kategori_efektif == "FDT":
+                desc_elem = placemark.find('kml:description', ns)
+                desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
+                
+                warna_baru = None
+                if "96C" in desc_text: warna_baru = "#FF0000"
+                elif "72C" in desc_text: warna_baru = "#550000"
+                elif "48C" in desc_text: warna_baru = "#AA00FF"
+                elif "SHARING" in desc_text: warna_baru = "#FFFFFF"
+                    
+                if warna_baru is not None:
                     style_url = placemark.find('kml:styleUrl', ns)
                     if style_url is not None: placemark.remove(style_url)
                     old_style = placemark.find('kml:Style', ns)
                     if old_style is not None: placemark.remove(old_style)
 
                     new_style = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
-                    
-                    if not is_kecuali:
-                        balloon_style = ET.SubElement(new_style, '{%s}BalloonStyle' % namespace_kml)
-                        ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml).text = "hide"
-
                     icon_style = ET.SubElement(new_style, '{%s}IconStyle' % namespace_kml)
-                    ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(aturan['warna'])
-                    ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = aturan['ukuran']
+                    ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
+                    ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.8"
                     icon = ET.SubElement(icon_style, '{%s}Icon' % namespace_kml)
-                    ET.SubElement(icon, '{%s}href' % namespace_kml).text = aturan['icon']
-                    
+                    ET.SubElement(icon, '{%s}href' % namespace_kml).text = "http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png"
                     label_style = ET.SubElement(new_style, '{%s}LabelStyle' % namespace_kml)
-                    ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(aturan['warna_teks'])
-                    ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = aturan['ukuran_teks']
-
-                # --- LOGIKA B: GARIS/KABEL ---
-                elif nama_folder in style_rules_garis:
-                    aturan = style_rules_garis[nama_folder]
-                    nama_placemark_elem = placemark.find('kml:name', ns)
-                    nama_placemark = nama_placemark_elem.text.strip().upper() if nama_placemark_elem is not None and nama_placemark_elem.text else ""
-                    warna_hex_sementara = aturan['warna'] 
-
-                    if nama_folder == "DISTRIBUTION CABLE":
-                        if "24C/2T" in nama_placemark: warna_hex_sementara = "#00FF00"
-                        elif "36C/3T" in nama_placemark: warna_hex_sementara = "#FF00FF"
-                        elif "48C/4T" in nama_hex_sementara: warna_hex_sementara = "#AA00FF"
-                    
-                    style_elem = placemark.find('kml:Style', ns)
-                    if style_elem is None: style_elem = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
-                    
-                    if not is_kecuali:
-                        balloon_style = style_elem.find('kml:BalloonStyle', ns)
-                        if balloon_style is None:
-                            balloon_style = ET.SubElement(style_elem, '{%s}BalloonStyle' % namespace_kml)
-                        disp_mode = balloon_style.find('kml:displayMode', ns)
-                        if disp_mode is None:
-                            disp_mode = ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml)
-                        disp_mode.text = "hide"
-
-                    line_style = style_elem.find('kml:LineStyle', ns)
-                    if line_style is None: line_style = ET.SubElement(style_elem, '{%s}LineStyle' % namespace_kml)
-                    
-                    warna_baru = hex_to_kml_color(warna_hex_sementara)
-                    if warna_baru != "":
-                        color_elem = line_style.find('kml:color', ns)
-                        if color_elem is None: color_elem = ET.SubElement(line_style, '{%s}color' % namespace_kml)
-                        color_elem.text = warna_baru
-                    
-                    width_elem = line_style.find('kml:width', ns)
-                    if width_elem is None: width_elem = ET.SubElement(line_style, '{%s}width' % namespace_kml)
-                    width_elem.text = aturan['ketebalan']
-            
-                # --- LOGIKA D: FOLDER FDT BERDASARKAN KOMENTAR ---
-                elif nama_folder == "FDT":
-                    desc_elem = placemark.find('kml:description', ns)
-                    desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
-                    
-                    warna_baru = None
-                    if "96C" in desc_text: warna_baru = "#FF0000"
-                    elif "72C" in desc_text: warna_baru = "#550000"
-                    elif "48C" in desc_text: warna_baru = "#AA00FF"
-                    elif "SHARING" in desc_text: warna_baru = "#FFFFFF"
-                        
-                    if warna_baru is not None:
-                        style_url = placemark.find('kml:styleUrl', ns)
-                        if style_url is not None: placemark.remove(style_url)
-                        old_style = placemark.find('kml:Style', ns)
-                        if old_style is not None: placemark.remove(old_style)
-
-                        new_style = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
-                        icon_style = ET.SubElement(new_style, '{%s}IconStyle' % namespace_kml)
-                        ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
-                        ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.8"
-                        icon = ET.SubElement(icon_style, '{%s}Icon' % namespace_kml)
-                        ET.SubElement(icon, '{%s}href' % namespace_kml).text = "http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png"
-                        label_style = ET.SubElement(new_style, '{%s}LabelStyle' % namespace_kml)
-                        ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
-                        ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
+                    ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
+                    ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
 
     # ==========================================
-    # 5. LOGIKA C: Copy FDT ke Slack Hanger Line Pertama
+    # 5. LOGIKA C: Copy FDT ke Slack Hanger Line Pertama 
     # ==========================================
     list_placemark_template = []
     for folder in root.findall('.//kml:Folder', ns):
-        nama_folder_elem = folder.find('kml:name', ns)
-        if nama_folder_elem is not None and nama_folder_elem.text and nama_folder_elem.text.strip().upper() == "FDT":
+        kategori_efektif = get_kategori(folder)
+        if kategori_efektif == "FDT":
             for titik_asli in folder.findall('./kml:Placemark', ns): 
                 placemark_copy = copy.deepcopy(titik_asli) 
 
+                # Hapus total atribut popup bawaan FDT dari hasil Salinan
                 for hapus_tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility']:
                     tag_elem = placemark_copy.find(hapus_tag, ns)
                     if tag_elem is not None:
@@ -265,6 +296,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 
                 new_style = ET.SubElement(placemark_copy, '{%s}Style' % namespace_kml)
                 
+                # Paksa Matikan pop-up secara mutlak
                 balloon_style = ET.SubElement(new_style, '{%s}BalloonStyle' % namespace_kml)
                 ET.SubElement(balloon_style, '{%s}displayMode' % namespace_kml).text = "hide"
 
@@ -278,8 +310,8 @@ def proses_kmz(input_path, output_path, extract_dir):
                 ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
                 
                 list_placemark_template.append(placemark_copy)
-            break 
-    
+
+    # Tempelkan ke folder Slack Hanger
     if list_placemark_template:
         berhasil_paste = False
         for folder_induk in root.findall('.//kml:Folder', ns):
@@ -309,7 +341,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Upload file KMZ Anda di bawah ini untuk memformat struktur folder, gaya ikon, keselarasan warna teks & ikon, serta pembersihan pop-up secara selektif.")
+st.write("Upload file KMZ Anda untuk memformat struktur folder, gaya ikon, keselarasan warna teks, pelacakan sub-folder, serta pembersihan pop-up secara selektif.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -332,7 +364,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah bersih dan sesuai standar.")
+                st.success("Berhasil! File KMZ Anda sudah sangat rapi dan sesuai standar yang ketat.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
