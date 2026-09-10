@@ -138,7 +138,6 @@ def proses_kmz(input_path, output_path, extract_dir):
             ET.SubElement(line_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_garis)
         ET.SubElement(line_style, '{%s}width' % namespace_kml).text = ketebalan
 
-    # Daftarkan shared styles standar titik
     for kat, aturan in style_rules_titik.items():
         style_id_name = f"shared_style_{kat.replace(' ', '_')}"
         buat_shared_style(style_id_name, aturan['warna'], aturan['warna_teks'], aturan['ukuran'], aturan['icon'], hide_balloon=True)
@@ -150,7 +149,6 @@ def proses_kmz(input_path, output_path, extract_dir):
     buat_shared_style("shared_style_fdt_48c", "#AA00FF", "#AA00FF", "0.8", cross_hair_icon, hide_balloon=True)
     buat_shared_style("shared_style_fdt_sharing", "#FFFFFF", "#FFFFFF", "0.8", cross_hair_icon, hide_balloon=True)
 
-    # Daftarkan shared styles garis
     buat_shared_line_style("shared_style_cable_24c", "#00FF00", "3", hide_balloon=True)
     buat_shared_line_style("shared_style_cable_36c", "#FF00FF", "3", hide_balloon=True)
     buat_shared_line_style("shared_style_cable_48c", "#AA00FF", "3", hide_balloon=True)
@@ -198,7 +196,12 @@ def proses_kmz(input_path, output_path, extract_dir):
         
         for placemark in folder.findall('./kml:Placemark', ns) + folder.findall('./Placemark'):
             if not is_kecuali:
-                for tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility', 'description', 'Snippet', 'balloonVisibility']:
+                # Hapus deskripsi, snippet, balloon, dan timestamp
+                tags_to_purge = [
+                    'kml:description', 'kml:Snippet', 'gx:balloonVisibility', 'description', 'Snippet', 'balloonVisibility',
+                    'kml:TimeStamp', 'kml:TimeSpan', 'TimeStamp', 'TimeSpan', 'kml:ExtendedData', 'ExtendedData'
+                ]
+                for tag in tags_to_purge:
                     elem_to_remove = placemark.find(tag, ns)
                     if elem_to_remove is not None:
                         placemark.remove(elem_to_remove)
@@ -265,7 +268,11 @@ def proses_kmz(input_path, output_path, extract_dir):
             for titik_asli in folder.findall('./kml:Placemark', ns) + folder.findall('./Placemark'): 
                 placemark_copy = copy.deepcopy(titik_asli) 
 
-                for hapus_tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility', 'description', 'Snippet', 'balloonVisibility']:
+                tags_to_purge_copy = [
+                    'kml:description', 'kml:Snippet', 'gx:balloonVisibility', 'description', 'Snippet', 'balloonVisibility',
+                    'kml:TimeStamp', 'kml:TimeSpan', 'TimeStamp', 'TimeSpan', 'kml:ExtendedData', 'ExtendedData'
+                ]
+                for hapus_tag in tags_to_purge_copy:
                     tag_elem = placemark_copy.find(hapus_tag, ns)
                     if tag_elem is not None:
                         placemark_copy.remove(tag_elem)
@@ -312,7 +319,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip stabil: Ikon FDT menggunakan cross-hairs.png dengan warna core akurat, skala 0.8, serta perlindungan folder Boundary & Cable.")
+st.write("Skrip stabil: Pembersihan timestamp & deskripsi, ikon FDT cross-hairs.png dengan warna core akurat, serta skala 0.8 mutlak.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -335,7 +342,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah sesuai standar.")
+                st.success("Berhasil! File KMZ Anda sudah bersih dan sesuai standar.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
