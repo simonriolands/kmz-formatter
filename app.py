@@ -138,10 +138,19 @@ def proses_kmz(input_path, output_path, extract_dir):
             ET.SubElement(line_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_garis)
         ET.SubElement(line_style, '{%s}width' % namespace_kml).text = ketebalan
 
+    # Daftarkan shared styles standar titik
     for kat, aturan in style_rules_titik.items():
         style_id_name = f"shared_style_{kat.replace(' ', '_')}"
         buat_shared_style(style_id_name, aturan['warna'], aturan['warna_teks'], aturan['ukuran'], aturan['icon'], hide_balloon=True)
 
+    # Daftarkan shared styles FDT menggunakan cross-hairs.png dan skala 0.8 sesuai ketentuan
+    cross_hair_icon = "http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png"
+    buat_shared_style("shared_style_fdt_96c", "#FF0000", "#FF0000", "0.8", cross_hair_icon, hide_balloon=True)
+    buat_shared_style("shared_style_fdt_72c", "#550000", "#550000", "0.8", cross_hair_icon, hide_balloon=True)
+    buat_shared_style("shared_style_fdt_48c", "#AA00FF", "#AA00FF", "0.8", cross_hair_icon, hide_balloon=True)
+    buat_shared_style("shared_style_fdt_sharing", "#FFFFFF", "#FFFFFF", "0.8", cross_hair_icon, hide_balloon=True)
+
+    # Daftarkan shared styles garis
     buat_shared_line_style("shared_style_cable_24c", "#00FF00", "3", hide_balloon=True)
     buat_shared_line_style("shared_style_cable_36c", "#FF00FF", "3", hide_balloon=True)
     buat_shared_line_style("shared_style_cable_48c", "#AA00FF", "3", hide_balloon=True)
@@ -171,7 +180,7 @@ def proses_kmz(input_path, output_path, extract_dir):
         if nama_elem is None: nama_elem = folder_elem.find('name')
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
-    # Bersihkan style di level folder reguler
+    # Bersihkan style di level folder reguler (Lindungi Boundary, Cable, dan FDT)
     for folder_elem in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_f_elem = folder_elem.find('kml:name', ns)
         if nama_f_elem is None: nama_f_elem = folder_elem.find('name')
@@ -232,41 +241,19 @@ def proses_kmz(input_path, output_path, extract_dir):
                 if desc_elem is None: desc_elem = placemark.find('description')
                 desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
                 
-                warna_baru = None
-                if "96C" in desc_text: warna_baru = "#FF0000"
-                elif "72C" in desc_text: warna_baru = "#550000"
-                elif "48C" in desc_text: warna_baru = "#AA00FF"
-                elif "SHARING" in desc_text: warna_baru = "#FFFFFF"
+                fdt_style_ref = None
+                if "96C" in desc_text: fdt_style_ref = "#shared_style_fdt_96c"
+                elif "72C" in desc_text: fdt_style_ref = "#shared_style_fdt_72c"
+                elif "48C" in desc_text: fdt_style_ref = "#shared_style_fdt_48c"
+                elif "SHARING" in desc_text: fdt_style_ref = "#shared_style_fdt_sharing"
                     
-                if warna_baru is not None:
-                    # Ambil ikon asli dari placemark atau gunakan default
-                    icon_href = "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"
-                    local_icon = placemark.find('.//kml:IconStyle/kml:Icon/kml:href', ns)
-                    if local_icon is None: local_icon = placemark.find('.//IconStyle/Icon/href')
-                    if local_icon is not None and local_icon.text:
-                        icon_href = local_icon.text
-                    else:
-                        s_url = placemark.find('kml:styleUrl', ns)
-                        if s_url is None: s_url = placemark.find('styleUrl')
-                        if s_url is not None and s_url.text:
-                            s_id = s_url.text.strip('#')
-                            f_style = document_elem.find(f".//*[@id='{s_id}']")
-                            if f_style is not None:
-                                o_icon = f_style.find('.//kml:IconStyle/kml:Icon/kml:href', ns)
-                                if o_icon is None: o_icon = f_style.find('.//IconStyle/Icon/href')
-                                if o_icon is not None and o_icon.text:
-                                    icon_href = o_icon.text
-
-                    fdt_style_id = f"shared_style_fdt_{warna_baru.replace('#', '')}_{abs(hash(icon_href))}"
-                    if document_elem.find(f".//*[@id='{fdt_style_id}']") is None:
-                        buat_shared_style(fdt_style_id, warna_baru, warna_baru, "0.8", icon_href, hide_balloon=True)
-
+                if fdt_style_ref is not None:
                     for tag_to_remove in ['kml:styleUrl', 'kml:Style', 'kml:StyleMap', 'styleUrl', 'Style', 'StyleMap']:
                         for elem_to_remove in list(placemark.findall(tag_to_remove, ns) + placemark.findall(tag_to_remove)):
                             placemark.remove(elem_to_remove)
 
                     style_url_elem = ET.SubElement(placemark, '{%s}styleUrl' % namespace_kml)
-                    style_url_elem.text = f"#{fdt_style_id}"
+                    style_url_elem.text = fdt_style_ref
 
     # ==========================================
     # LOGIKA C: Copy FDT ke Slack Hanger
@@ -325,7 +312,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip stabil: Perlindungan penuh untuk folder Boundary & Cable, mempertahankan ikon asli FDT, serta skala 0.8 mutlak.")
+st.write("Skrip stabil: Ikon FDT menggunakan cross-hairs.png dengan warna core akurat, skala 0.8, serta perlindungan folder Boundary & Cable.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
