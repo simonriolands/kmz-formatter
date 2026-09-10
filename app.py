@@ -19,7 +19,6 @@ def hex_to_kml_color(hex_color):
     return hex_color
 
 def proses_kmz(input_path, output_path, extract_dir):
-    # KETENTUAN SKALA DIPATOK 0.8 SECARA MUTLAK
     style_rules_titik = {
         "FAT": {"warna": "#FFFF00", "warna_teks": "#FFFF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/triangle.png"},
         "HP COVER": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
@@ -128,13 +127,11 @@ def proses_kmz(input_path, output_path, extract_dir):
     for elem in root.iter():
         tag_name = elem.tag.split('}')[-1]
         if tag_name in ['Style', 'StyleMap']:
-            # Hapus semua balon popup di level global/style
             for b_style in list(elem.findall('.//kml:BalloonStyle', ns) + elem.findall('.//{%s}BalloonStyle' % namespace_kml)):
                 try:
                     b_style.getparent().remove(b_style)
                 except:
                     pass
-            # Paksa seluruh tag scale menjadi 0.8 tanpa kecuali
             for scale_elem in elem.iter('{http://www.opengis.net/kml/2.2}scale'):
                 scale_elem.text = "0.8"
 
@@ -186,13 +183,37 @@ def proses_kmz(input_path, output_path, extract_dir):
                     folder.append(sisa_folder)
 
     # ==========================================
-    # PROSES UTAMA & KONTROL POP-UP DAN SKALA 0.8
+    # PROSES UTAMA & KONTROL POP-UP DAN SKALA 0.8 (PLACEMARK & FOLDER)
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
         kategori_efektif = get_kategori(folder)
         if not kategori_efektif:
             continue
             
+        # KUNCI UTAMA: Injeksi Style langsung ke dalam tag <Folder> agar Properties Folder jadi 0.8
+        if kategori_efektif in style_rules_titik or kategori_efektif == "FDT":
+            f_style = folder.find('kml:Style', ns)
+            if f_style is None:
+                f_style = ET.SubElement(folder, '{%s}Style' % namespace_kml)
+            
+            f_icon_style = f_style.find('kml:IconStyle', ns)
+            if f_icon_style is None:
+                f_icon_style = ET.SubElement(f_style, '{%s}IconStyle' % namespace_kml)
+            f_scale_icon = f_icon_style.find('kml:scale', ns)
+            if f_scale_icon is None:
+                ET.SubElement(f_icon_style, '{%s}scale' % namespace_kml).text = "0.8"
+            else:
+                f_scale_icon.text = "0.8"
+                
+            f_label_style = f_style.find('kml:LabelStyle', ns)
+            if f_label_style is None:
+                f_label_style = ET.SubElement(f_style, '{%s}LabelStyle' % namespace_kml)
+            f_scale_label = f_label_style.find('kml:scale', ns)
+            if f_scale_label is None:
+                ET.SubElement(f_label_style, '{%s}scale' % namespace_kml).text = "0.8"
+            else:
+                f_scale_label.text = "0.8"
+
         is_kecuali = ("FDT" in kategori_efektif) or ("CABLE" in kategori_efektif) or ("BOUNDARY" in kategori_efektif)
         
         for placemark in folder.findall('./kml:Placemark', ns):
@@ -346,7 +367,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip mutakhir: Penyapuan StyleMap/Style global dan penguncian skala 0.8 mutlak pada folder & placemark.")
+st.write("Skrip mutakhir: Injeksi gaya skala 0.8 mutlak pada level folder maupun placemark.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -369,7 +390,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah bersih dan skala konsisten 0.8.")
+                st.success("Berhasil! File KMZ Anda sudah bersih dan konsisten skala 0.8.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
