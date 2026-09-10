@@ -19,7 +19,6 @@ def hex_to_kml_color(hex_color):
     return hex_color
 
 def proses_kmz(input_path, output_path, extract_dir):
-    # SKALA DISERAGAMKAN MENJADI 0.8 SESUAI KETENTUAN
     style_rules_titik = {
         "FAT": {"warna": "#FFFF00", "warna_teks": "#FFFF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/triangle.png"},
         "HP COVER": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
@@ -122,16 +121,44 @@ def proses_kmz(input_path, output_path, extract_dir):
         nama_elem = folder_elem.find('kml:name', ns)
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
+    # ==========================================
+    # 0. PAKSA SEMUA BLOK STYLE GLOBAL (LEVEL FOLDER/DOKUMEN) MENJADI 0.8
+    # ==========================================
     for style_elem in root.findall('.//kml:Style', ns):
+        # Hapus BalloonStyle seperti biasa
         for b_style in list(style_elem.findall('kml:BalloonStyle', ns)):
             style_elem.remove(b_style)
+            
+        # Paksa IconStyle scale jadi 0.8 jika ada
+        icon_style = style_elem.find('kml:IconStyle', ns)
+        if icon_style is not None:
+            scale_elem = icon_style.find('kml:scale', ns)
+            if scale_elem is not None:
+                scale_elem.text = "0.8"
+            else:
+                ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.8"
+                
+        # Paksa LabelStyle scale jadi 0.8 jika ada
+        label_style = style_elem.find('kml:LabelStyle', ns)
+        if label_style is not None:
+            scale_elem = label_style.find('kml:scale', ns)
+            if scale_elem is not None:
+                scale_elem.text = "0.8"
+            else:
+                ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
 
+    # ==========================================
+    # 1. PEMBERSIHAN GLOBAL (TimeStamp, TimeSpan, ExtendedData)
+    # ==========================================
     for placemark in root.findall('.//kml:Placemark', ns):
         for hapus_tag in ['kml:TimeStamp', 'kml:TimeSpan', 'kml:ExtendedData']:
             tag_elem = placemark.find(hapus_tag, ns)
             if tag_elem is not None:
                 placemark.remove(tag_elem)
 
+    # ==========================================
+    # 2. PRA-PEMROSESAN FOLDER LINE
+    # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text:
@@ -167,7 +194,11 @@ def proses_kmz(input_path, output_path, extract_dir):
                 for sisa_nama, sisa_folder in sub_folders_dict.items():
                     folder.append(sisa_folder)
 
+    # ==========================================
+    # 3. PROSES UTAMA & KONTROL POP-UP DAN SKALA 0.8
+    # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
+        
         kategori_efektif = get_kategori(folder)
         if not kategori_efektif:
             continue
@@ -259,6 +290,9 @@ def proses_kmz(input_path, output_path, extract_dir):
                     ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
                     ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
 
+    # ==========================================
+    # 4. LOGIKA C: Copy FDT ke Slack Hanger
+    # ==========================================
     list_placemark_template = []
     for folder in root.findall('.//kml:Folder', ns):
         kategori_efektif = get_kategori(folder)
@@ -322,7 +356,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip stabil: Skala seragam 0.8, sinkronisasi warna teks & ikon, serta anti-korup struktur KML.")
+st.write("Skrip stabil: Skala dikunci mutlak 0.8 pada level folder, dokumen, maupun placemark.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -345,7 +379,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah bersih dan sesuai standar.")
+                st.success("Berhasil! File KMZ Anda sudah bersih dan skalanya konsisten 0.8.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
