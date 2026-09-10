@@ -19,7 +19,6 @@ def hex_to_kml_color(hex_color):
     return hex_color
 
 def proses_kmz(input_path, output_path, extract_dir):
-    # Definisi properti dasar untuk Shared Style
     style_rules_titik = {
         "FAT": {"warna": "#FFFF00", "warna_teks": "#FFFF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/triangle.png"},
         "HP COVER": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
@@ -102,16 +101,12 @@ def proses_kmz(input_path, output_path, extract_dir):
     tree = ET.parse(file_kml)
     root = tree.getroot()
 
-    # Cari atau buat tag <Document> di root untuk menaruh Shared Style
     document_elem = root.find('kml:Document', ns)
     if document_elem is None:
         document_elem = root.find('Document')
     if document_elem is None:
         document_elem = ET.SubElement(root, '{%s}Document' % namespace_kml)
 
-    # ==========================================
-    # BUAT SHARED STYLES DI LEVEL DOCUMENT
-    # ==========================================
     def buat_shared_style(style_id, warna_titik, warna_teks, ukuran, icon_url, hide_balloon=True):
         style_elem = ET.SubElement(document_elem, '{%s}Style' % namespace_kml, attrib={f'{{{namespace_kml}}}id': style_id})
         
@@ -143,31 +138,16 @@ def proses_kmz(input_path, output_path, extract_dir):
             ET.SubElement(line_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_garis)
         ET.SubElement(line_style, '{%s}width' % namespace_kml).text = ketebalan
 
-    # Daftarkan shared styles untuk titik standar
     for kat, aturan in style_rules_titik.items():
         style_id_name = f"shared_style_{kat.replace(' ', '_')}"
         buat_shared_style(style_id_name, aturan['warna'], aturan['warna_teks'], aturan['ukuran'], aturan['icon'], hide_balloon=True)
 
-    # Daftarkan shared styles khusus FDT (berdasarkan core)
-    fdt_core_colors = [("#FF0000", "fdt_96c"), ("#550000", "fdt_72c"), ("#AA00FF", "fdt_48c"), ("#FFFFFF", "fdt_sharing")]
-    for warna_fdt, fdt_key in fdt_core_colors:
-        buat_shared_style(f"shared_style_{fdt_key}", warna_fdt, warna_fdt, "0.8", "http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png", hide_balloon=True)
-
-    # Style untuk Slack Hanger tiruan FDT
+    buat_shared_line_style("shared_style_cable_24c", "#00FF00", "3", hide_balloon=True)
+    buat_shared_line_style("shared_style_cable_36c", "#FF00FF", "3", hide_balloon=True)
+    buat_shared_line_style("shared_style_cable_48c", "#AA00FF", "3", hide_balloon=True)
+    buat_shared_line_style("shared_style_sling_wire", "#00FFFF", "3", hide_balloon=True)
+    buat_shared_line_style("shared_style_dist_cable", "", "3", hide_balloon=True)
     buat_shared_style("shared_style_slack_hanger_copy", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/target.png", hide_balloon=True)
-
-    # Style untuk Kabel / Garis
-    buat_shared_style_line_24c = "shared_style_cable_24c"
-    buat_shared_style_line_36c = "shared_style_cable_36c"
-    buat_shared_style_line_48c = "shared_style_cable_48c"
-    buat_shared_style_sling = "shared_style_sling_wire"
-    buat_shared_style_dist = "shared_style_dist_cable"
-
-    buat_shared_line_style(buat_shared_style_line_24c, "#00FF00", "3", hide_balloon=True)
-    buat_shared_line_style(buat_shared_style_line_36c, "#FF00FF", "3", hide_balloon=True)
-    buat_shared_line_style(buat_shared_style_line_48c, "#AA00FF", "3", hide_balloon=True)
-    buat_shared_line_style(buat_shared_style_sling, "#00FFFF", "3", hide_balloon=True)
-    buat_shared_line_style(buat_shared_style_dist, "", "3", hide_balloon=True)
 
     parent_map = {c: p for p in root.iter() for c in p}
 
@@ -191,57 +171,15 @@ def proses_kmz(input_path, output_path, extract_dir):
         if nama_elem is None: nama_elem = folder_elem.find('name')
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
-    # Bersihkan style di level folder agar tidak konflik
+    # Bersihkan style di level folder reguler
     for folder_elem in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
-        for f_style in list(folder_elem.findall('kml:Style', ns) + folder_elem.findall('Style') + folder_elem.findall('kml:StyleMap', ns) + folder_elem.findall('StyleMap')):
-            folder_elem.remove(f_style)
+        nama_f_elem = folder_elem.find('kml:name', ns)
+        if nama_f_elem is None: nama_f_elem = folder_elem.find('name')
+        nama_f = nama_f_elem.text.strip().upper() if (nama_f_elem is not None and nama_f_elem.text) else ""
+        if "BOUNDARY" not in nama_f and "CABLE" not in nama_f and "FDT" not in nama_f:
+            for f_style in list(folder_elem.findall('kml:Style', ns) + folder_elem.findall('Style') + folder_elem.findall('kml:StyleMap', ns) + folder_elem.findall('StyleMap')):
+                folder_elem.remove(f_style)
 
-    # Bersihkan global placemark tags
-    for placemark in root.findall('.//kml:Placemark', ns) + root.findall('.//Placemark'):
-        for hapus_tag in ['TimeStamp', 'TimeSpan', 'ExtendedData', 'kml:TimeStamp', 'kml:TimeSpan', 'kml:ExtendedData']:
-            tag_elem = placemark.find(hapus_tag, ns)
-            if tag_elem is not None:
-                placemark.remove(tag_elem)
-
-    # Pra-pemrosesan folder line
-    for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
-        nama_folder_elem = folder.find('kml:name', ns)
-        if nama_folder_elem is None: nama_folder_elem = folder.find('name')
-        if nama_folder_elem is not None and nama_folder_elem.text:
-            nama_folder = nama_folder_elem.text.strip().upper()
-            if nama_folder.startswith("LINE"):
-                semua_elemen_anak = list(folder)
-                sub_folders_dict = {}
-                elemen_lainnya = []
-                
-                for anak in semua_elemen_anak:
-                    if anak.tag.endswith('Folder'):
-                        sub_nama_elem = anak.find('kml:name', ns)
-                        if sub_nama_elem is None: sub_nama_elem = anak.find('name')
-                        sub_nama = sub_nama_elem.text.strip().upper() if (sub_nama_elem is not None and sub_nama_elem.text) else ""
-                        sub_folders_dict[sub_nama] = anak
-                    else:
-                        elemen_lainnya.append(anak)
-                
-                for nama_target in daftar_folder_standar:
-                    if nama_target not in sub_folders_dict:
-                        folder_baru = ET.Element(f'{{{namespace_kml}}}Folder')
-                        nama_elemen_baru = ET.SubElement(folder_baru, f'{{{namespace_kml}}}name')
-                        nama_elemen_baru.text = nama_target
-                        sub_folders_dict[nama_target] = folder_baru
-                
-                for anak in semua_elemen_anak:
-                    folder.remove(anak)
-                for elemen in elemen_lainnya:
-                    folder.append(elemen)
-                for nama_target in daftar_folder_standar:
-                    if nama_target in sub_folders_dict:
-                        folder.append(sub_folders_dict[nama_target])
-                        del sub_folders_dict[nama_target]
-                for sisa_nama, sisa_folder in sub_folders_dict.items():
-                    folder.append(sisa_folder)
-
-    # Proses Utama Menggunakan Shared StyleUrl
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         kategori_efektif = get_kategori(folder)
         if not kategori_efektif:
@@ -256,13 +194,12 @@ def proses_kmz(input_path, output_path, extract_dir):
                     if elem_to_remove is not None:
                         placemark.remove(elem_to_remove)
 
-            # Hapus style lama/inline style milik placemark
-            for tag_to_remove in ['kml:styleUrl', 'kml:Style', 'kml:StyleMap', 'styleUrl', 'Style', 'StyleMap']:
-                for elem_to_remove in list(placemark.findall(tag_to_remove, ns) + placemark.findall(tag_to_remove)):
-                    placemark.remove(elem_to_remove)
+                for tag_to_remove in ['kml:styleUrl', 'kml:Style', 'kml:StyleMap', 'styleUrl', 'Style', 'StyleMap']:
+                    for elem_to_remove in list(placemark.findall(tag_to_remove, ns) + placemark.findall(tag_to_remove)):
+                        placemark.remove(elem_to_remove)
 
-            # --- APLIKASI STYLEURL BERDASARKAN KATEGORI ---
             if kategori_efektif in style_rules_titik:
+                aturan = style_rules_titik[kategori_efektif]
                 if kategori_efektif in folder_existing_pole:
                     nama_placemark_elem = placemark.find('kml:name', ns)
                     if nama_placemark_elem is None: nama_placemark_elem = placemark.find('name')
@@ -271,9 +208,8 @@ def proses_kmz(input_path, output_path, extract_dir):
                         if "EXT." not in nama_asli.upper():
                             nama_placemark_elem.text = "EXT." + nama_asli
 
-                style_id_ref = f"#shared_style_{kategori_efektif.replace(' ', '_')}"
                 style_url_elem = ET.SubElement(placemark, '{%s}styleUrl' % namespace_kml)
-                style_url_elem.text = style_id_ref
+                style_url_elem.text = f"#shared_style_{kategori_efektif.replace(' ', '_')}"
 
             elif kategori_efektif in style_rules_garis:
                 nama_placemark_elem = placemark.find('kml:name', ns)
@@ -296,15 +232,41 @@ def proses_kmz(input_path, output_path, extract_dir):
                 if desc_elem is None: desc_elem = placemark.find('description')
                 desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
                 
-                fdt_style_ref = None
-                if "96C" in desc_text: fdt_style_ref = "#shared_style_fdt_96c"
-                elif "72C" in desc_text: fdt_style_ref = "#shared_style_fdt_72c"
-                elif "48C" in desc_text: fdt_style_ref = "#shared_style_fdt_48c"
-                elif "SHARING" in desc_text: fdt_style_ref = "#shared_style_fdt_sharing"
+                warna_baru = None
+                if "96C" in desc_text: warna_baru = "#FF0000"
+                elif "72C" in desc_text: warna_baru = "#550000"
+                elif "48C" in desc_text: warna_baru = "#AA00FF"
+                elif "SHARING" in desc_text: warna_baru = "#FFFFFF"
                     
-                if fdt_style_ref is not None:
+                if warna_baru is not None:
+                    # Ambil ikon asli dari placemark atau gunakan default
+                    icon_href = "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"
+                    local_icon = placemark.find('.//kml:IconStyle/kml:Icon/kml:href', ns)
+                    if local_icon is None: local_icon = placemark.find('.//IconStyle/Icon/href')
+                    if local_icon is not None and local_icon.text:
+                        icon_href = local_icon.text
+                    else:
+                        s_url = placemark.find('kml:styleUrl', ns)
+                        if s_url is None: s_url = placemark.find('styleUrl')
+                        if s_url is not None and s_url.text:
+                            s_id = s_url.text.strip('#')
+                            f_style = document_elem.find(f".//*[@id='{s_id}']")
+                            if f_style is not None:
+                                o_icon = f_style.find('.//kml:IconStyle/kml:Icon/kml:href', ns)
+                                if o_icon is None: o_icon = f_style.find('.//IconStyle/Icon/href')
+                                if o_icon is not None and o_icon.text:
+                                    icon_href = o_icon.text
+
+                    fdt_style_id = f"shared_style_fdt_{warna_baru.replace('#', '')}_{abs(hash(icon_href))}"
+                    if document_elem.find(f".//*[@id='{fdt_style_id}']") is None:
+                        buat_shared_style(fdt_style_id, warna_baru, warna_baru, "0.8", icon_href, hide_balloon=True)
+
+                    for tag_to_remove in ['kml:styleUrl', 'kml:Style', 'kml:StyleMap', 'styleUrl', 'Style', 'StyleMap']:
+                        for elem_to_remove in list(placemark.findall(tag_to_remove, ns) + placemark.findall(tag_to_remove)):
+                            placemark.remove(elem_to_remove)
+
                     style_url_elem = ET.SubElement(placemark, '{%s}styleUrl' % namespace_kml)
-                    style_url_elem.text = fdt_style_ref
+                    style_url_elem.text = f"#{fdt_style_id}"
 
     # ==========================================
     # LOGIKA C: Copy FDT ke Slack Hanger
@@ -363,7 +325,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip mutakhir: Menggunakan metode Shared Style (styleUrl) standar KML untuk menghilangkan peringatan Google Earth dan menstandarisasi skala 0.8 secara mutlak.")
+st.write("Skrip stabil: Perlindungan penuh untuk folder Boundary & Cable, mempertahankan ikon asli FDT, serta skala 0.8 mutlak.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -386,7 +348,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah bersih menggunakan metode Shared Style.")
+                st.success("Berhasil! File KMZ Anda sudah sesuai standar.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
