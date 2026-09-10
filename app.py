@@ -5,6 +5,7 @@ import shutil
 import xml.etree.ElementTree as ET
 import copy
 import tempfile
+import re
 
 # ==========================================
 # FUNGSI UTAMA PEMROSESAN KMZ
@@ -21,9 +22,9 @@ def hex_to_kml_color(hex_color):
     return hex_color
 
 def proses_kmz(input_path, output_path, extract_dir):
-    # UKURAN DIUBAH MENJADI 0.6 SECARA MENYELURUH
+    # KETENTUAN SKALA PER FOLDER (Bisa Anda sesuaikan sendiri: 0.6 atau 0.8)
     style_rules_titik = {
-        "FAT": {"warna": "#FFFF00", "warna_teks": "#FFFF00", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/triangle.png"},
+        "FAT": {"warna": "#FFFF00", "warna_teks": "#FFFF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/triangle.png"},
         "HP COVER": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
         "HP UNCOVER": {"warna": "#FF0000", "warna_teks": "#FF0000", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
         "EXISTING POLE EMR 7-2.5": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
@@ -67,12 +68,46 @@ def proses_kmz(input_path, output_path, extract_dir):
     if not file_kml:
         raise Exception("File KML tidak ditemukan di dalam KMZ.")
 
+    # ==========================================
+    # PERBAIKAN ERROR "UNBOUND PREFIX"
+    # ==========================================
+    # Membaca KML sebagai teks dan menyuntikkan namespace standar yang sering hilang
+    with open(file_kml, 'r', encoding='utf-8') as f:
+        kml_data = f.read()
+
+    namespaces_wajib = [
+        ('xmlns:gx', '"http://www.google.com/kml/ext/2.2"'),
+        ('xmlns:kml', '"http://www.opengis.net/kml/2.2"'),
+        ('xmlns:atom', '"http://www.w3.org/2005/Atom"'),
+        ('xmlns:xal', '"urn:oasis:names:tc:ciq:xsdschema:xAL:2.0"'),
+        ('xmlns:xsi', '"http://www.w3.org/2001/XMLSchema-instance"')
+    ]
+
+    kml_tag_match = re.search(r'<kml[^>]*>', kml_data)
+    if kml_tag_match:
+        kml_tag = kml_tag_match.group(0)
+        new_kml_tag = kml_tag
+        if '<kml>' in new_kml_tag:
+            new_kml_tag = new_kml_tag.replace('<kml>', '<kml >')
+        
+        for ns, url in namespaces_wajib:
+            if ns not in new_kml_tag:
+                new_kml_tag = new_kml_tag.replace('<kml ', f'<kml {ns}={url} ')
+        
+        if new_kml_tag != kml_tag:
+            kml_data = kml_data.replace(kml_tag, new_kml_tag)
+            with open(file_kml, 'w', encoding='utf-8') as f:
+                f.write(kml_data)
+
+    # Registrasi Namespace untuk penulisannya nanti
     namespace_kml = "http://www.opengis.net/kml/2.2"
     namespace_gx = "http://www.google.com/kml/ext/2.2"
     ET.register_namespace('', namespace_kml)
     ET.register_namespace('gx', namespace_gx)
+    ET.register_namespace('atom', "http://www.w3.org/2005/Atom")
     ns = {'kml': namespace_kml, 'gx': namespace_gx}
     
+    # Parse KML (Sekarang dijamin aman dari Unbound Prefix)
     tree = ET.parse(file_kml)
     root = tree.getroot()
 
@@ -169,7 +204,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                     if elem_to_remove is not None:
                         placemark.remove(elem_to_remove)
 
-            # AGRESIVITAS PEMBERSIHAN: Hapus stylelama, StyleMap, dan styleUrl
+            # AGRESIVITAS PEMBERSIHAN GAYA LAMA
             for tag_to_remove in ['kml:styleUrl', 'kml:Style', 'kml:StyleMap']:
                 for elem_to_remove in list(placemark.findall(tag_to_remove, ns)):
                     placemark.remove(elem_to_remove)
@@ -228,7 +263,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                 width_elem = ET.SubElement(line_style, '{%s}width' % namespace_kml)
                 width_elem.text = aturan['ketebalan']
         
-            # --- LOGIKA D: FDT (IKON JUGA MENJADI 0.6) ---
+            # --- LOGIKA D: FDT (KITA SET DEFAULT 0.6) ---
             elif kategori_efektif == "FDT":
                 desc_elem = placemark.find('kml:description', ns)
                 desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
@@ -320,7 +355,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip mutakhir: skala titik konsisten 0.6, penyesuaian warna teks cerdas, dan kontrol pop-up ketat.")
+st.write("Skrip mutakhir: anti-error XML (unbound prefix), skala dapat disesuaikan per folder, dan warna teks sinkron 100%.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -343,7 +378,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah sangat rapi dengan skala 0.6 yang konsisten.")
+                st.success("Berhasil! File KMZ Anda sudah sangat rapi.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
