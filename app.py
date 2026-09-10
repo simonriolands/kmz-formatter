@@ -65,7 +65,6 @@ def proses_kmz(input_path, output_path, extract_dir):
     if not file_kml:
         raise Exception("File KML tidak ditemukan di dalam KMZ.")
 
-    # Mencegah error unbound prefix pada XML
     with open(file_kml, 'r', encoding='utf-8') as f:
         kml_data = f.read()
 
@@ -123,19 +122,16 @@ def proses_kmz(input_path, output_path, extract_dir):
         nama_elem = folder_elem.find('kml:name', ns)
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
-    # 1. HAPUS SEMUA BALLOONSTYLE DI LEVEL FOLDER/DOKUMEN
     for style_elem in root.findall('.//kml:Style', ns):
         for b_style in list(style_elem.findall('kml:BalloonStyle', ns)):
             style_elem.remove(b_style)
 
-    # 2. PEMBERSIHAN GLOBAL
     for placemark in root.findall('.//kml:Placemark', ns):
         for hapus_tag in ['kml:TimeStamp', 'kml:TimeSpan', 'kml:ExtendedData']:
             tag_elem = placemark.find(hapus_tag, ns)
             if tag_elem is not None:
                 placemark.remove(tag_elem)
 
-    # 3. PRA-PEMROSESAN FOLDER LINE
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text:
@@ -171,9 +167,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                 for sisa_nama, sisa_folder in sub_folders_dict.items():
                     folder.append(sisa_folder)
 
-    # 4. PROSES UTAMA & KONTROL POP-UP DAN SKALA
     for folder in root.findall('.//kml:Folder', ns):
-        
         kategori_efektif = get_kategori(folder)
         if not kategori_efektif:
             continue
@@ -181,7 +175,6 @@ def proses_kmz(input_path, output_path, extract_dir):
         is_kecuali = ("FDT" in kategori_efektif) or ("CABLE" in kategori_efektif) or ("BOUNDARY" in kategori_efektif)
         
         for placemark in folder.findall('./kml:Placemark', ns):
-            
             if not is_kecuali:
                 for tag in ['kml:description', 'kml:Snippet', 'gx:balloonVisibility']:
                     elem_to_remove = placemark.find(tag, ns)
@@ -192,7 +185,6 @@ def proses_kmz(input_path, output_path, extract_dir):
                 for elem_to_remove in list(placemark.findall(tag_to_remove, ns)):
                     placemark.remove(elem_to_remove)
 
-            # --- LOGIKA A: TITIK BIASA ---
             if kategori_efektif in style_rules_titik:
                 aturan = style_rules_titik[kategori_efektif]
                 if kategori_efektif in folder_existing_pole:
@@ -218,7 +210,6 @@ def proses_kmz(input_path, output_path, extract_dir):
                 ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(aturan['warna_teks'])
                 ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = aturan['ukuran_teks']
 
-            # --- LOGIKA B: GARIS/KABEL ---
             elif kategori_efektif in style_rules_garis:
                 aturan = style_rules_garis[kategori_efektif]
                 nama_placemark_elem = placemark.find('kml:name', ns)
@@ -246,7 +237,6 @@ def proses_kmz(input_path, output_path, extract_dir):
                 width_elem = ET.SubElement(line_style, '{%s}width' % namespace_kml)
                 width_elem.text = aturan['ketebalan']
         
-            # --- LOGIKA D: FDT (SKALA 0.8) ---
             elif kategori_efektif == "FDT":
                 desc_elem = placemark.find('kml:description', ns)
                 desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
@@ -269,7 +259,6 @@ def proses_kmz(input_path, output_path, extract_dir):
                     ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
                     ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
 
-    # 5. LOGIKA C: Copy FDT ke Slack Hanger
     list_placemark_template = []
     for folder in root.findall('.//kml:Folder', ns):
         kategori_efektif = get_kategori(folder)
@@ -330,9 +319,6 @@ def proses_kmz(input_path, output_path, extract_dir):
                 arcname = os.path.relpath(file_path, extract_dir)
                 new_kmz.write(file_path, arcname)
 
-# ==========================================
-# ANTARMUKA WEB (STREAMLIT)
-# ==========================================
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
