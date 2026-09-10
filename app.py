@@ -7,9 +7,6 @@ import copy
 import tempfile
 import re
 
-# ==========================================
-# FUNGSI UTAMA PEMROSESAN KMZ
-# ==========================================
 def hex_to_kml_color(hex_color):
     if not hex_color or str(hex_color).strip() == "":
         return "" 
@@ -22,22 +19,22 @@ def hex_to_kml_color(hex_color):
     return hex_color
 
 def proses_kmz(input_path, output_path, extract_dir):
-    # KETENTUAN SKALA PER FOLDER (Bisa Anda sesuaikan sendiri: 0.6 atau 0.8)
+    # SKALA DISERAGAMKAN MENJADI 0.8 SESUAI KETENTUAN
     style_rules_titik = {
         "FAT": {"warna": "#FFFF00", "warna_teks": "#FFFF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/triangle.png"},
-        "HP COVER": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
-        "HP UNCOVER": {"warna": "#FF0000", "warna_teks": "#FF0000", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
-        "EXISTING POLE EMR 7-2.5": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "EXISTING POLE EMR 7-3": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "EXISTING POLE EMR 7-4": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "EXISTING POLE EMR 9-4": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "EXISTING POLE PARTNER 7-4": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "EXISTING POLE PARTNER 9-4": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "NEW POLE 7-2.5": {"warna": "#AA00FF", "warna_teks": "#AA00FF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "NEW POLE 7-3": {"warna": "#00FFFF", "warna_teks": "#00FFFF", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "NEW POLE 7-4": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "NEW POLE 9-4": {"warna": "#FF0000", "warna_teks": "#FF0000", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
-        "SLACK HANGER": {"warna": "#FF0000", "warna_teks": "#FF0000", "ukuran": "0.6", "ukuran_teks": "0.6", "icon": "http://maps.google.com/mapfiles/kml/shapes/target.png"}
+        "HP COVER": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
+        "HP UNCOVER": {"warna": "#FF0000", "warna_teks": "#FF0000", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png"},
+        "EXISTING POLE EMR 7-2.5": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "EXISTING POLE EMR 7-3": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "EXISTING POLE EMR 7-4": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "EXISTING POLE EMR 9-4": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "EXISTING POLE PARTNER 7-4": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "EXISTING POLE PARTNER 9-4": {"warna": "#FFFFFF", "warna_teks": "#FFFFFF", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "NEW POLE 7-2.5": {"warna": "#AA00FF", "warna_teks": "#AA00FF", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "NEW POLE 7-3": {"warna": "#00FFFF", "warna_teks": "#00FFFF", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "NEW POLE 7-4": {"warna": "#00FF00", "warna_teks": "#00FF00", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "NEW POLE 9-4": {"warna": "#FF0000", "warna_teks": "#FF0000", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png"},
+        "SLACK HANGER": {"warna": "#FF0000", "warna_teks": "#FF0000", "ukuran": "0.8", "ukuran_teks": "0.8", "icon": "http://maps.google.com/mapfiles/kml/shapes/target.png"}
     }
 
     style_rules_garis = {
@@ -68,10 +65,7 @@ def proses_kmz(input_path, output_path, extract_dir):
     if not file_kml:
         raise Exception("File KML tidak ditemukan di dalam KMZ.")
 
-    # ==========================================
-    # PERBAIKAN ERROR "UNBOUND PREFIX"
-    # ==========================================
-    # Membaca KML sebagai teks dan menyuntikkan namespace standar yang sering hilang
+    # Mencegah error unbound prefix pada XML
     with open(file_kml, 'r', encoding='utf-8') as f:
         kml_data = f.read()
 
@@ -99,7 +93,6 @@ def proses_kmz(input_path, output_path, extract_dir):
             with open(file_kml, 'w', encoding='utf-8') as f:
                 f.write(kml_data)
 
-    # Registrasi Namespace untuk penulisannya nanti
     namespace_kml = "http://www.opengis.net/kml/2.2"
     namespace_gx = "http://www.google.com/kml/ext/2.2"
     ET.register_namespace('', namespace_kml)
@@ -107,7 +100,6 @@ def proses_kmz(input_path, output_path, extract_dir):
     ET.register_namespace('atom', "http://www.w3.org/2005/Atom")
     ns = {'kml': namespace_kml, 'gx': namespace_gx}
     
-    # Parse KML (Sekarang dijamin aman dari Unbound Prefix)
     tree = ET.parse(file_kml)
     root = tree.getroot()
 
@@ -131,25 +123,19 @@ def proses_kmz(input_path, output_path, extract_dir):
         nama_elem = folder_elem.find('kml:name', ns)
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
-    # ==========================================
     # 1. HAPUS SEMUA BALLOONSTYLE DI LEVEL FOLDER/DOKUMEN
-    # ==========================================
     for style_elem in root.findall('.//kml:Style', ns):
         for b_style in list(style_elem.findall('kml:BalloonStyle', ns)):
             style_elem.remove(b_style)
 
-    # ==========================================
     # 2. PEMBERSIHAN GLOBAL
-    # ==========================================
     for placemark in root.findall('.//kml:Placemark', ns):
         for hapus_tag in ['kml:TimeStamp', 'kml:TimeSpan', 'kml:ExtendedData']:
             tag_elem = placemark.find(hapus_tag, ns)
             if tag_elem is not None:
                 placemark.remove(tag_elem)
 
-    # ==========================================
     # 3. PRA-PEMROSESAN FOLDER LINE
-    # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is not None and nama_folder_elem.text:
@@ -185,9 +171,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                 for sisa_nama, sisa_folder in sub_folders_dict.items():
                     folder.append(sisa_folder)
 
-    # ==========================================
     # 4. PROSES UTAMA & KONTROL POP-UP DAN SKALA
-    # ==========================================
     for folder in root.findall('.//kml:Folder', ns):
         
         kategori_efektif = get_kategori(folder)
@@ -204,7 +188,6 @@ def proses_kmz(input_path, output_path, extract_dir):
                     if elem_to_remove is not None:
                         placemark.remove(elem_to_remove)
 
-            # AGRESIVITAS PEMBERSIHAN GAYA LAMA
             for tag_to_remove in ['kml:styleUrl', 'kml:Style', 'kml:StyleMap']:
                 for elem_to_remove in list(placemark.findall(tag_to_remove, ns)):
                     placemark.remove(elem_to_remove)
@@ -263,7 +246,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                 width_elem = ET.SubElement(line_style, '{%s}width' % namespace_kml)
                 width_elem.text = aturan['ketebalan']
         
-            # --- LOGIKA D: FDT (KITA SET DEFAULT 0.6) ---
+            # --- LOGIKA D: FDT (SKALA 0.8) ---
             elif kategori_efektif == "FDT":
                 desc_elem = placemark.find('kml:description', ns)
                 desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
@@ -278,17 +261,15 @@ def proses_kmz(input_path, output_path, extract_dir):
                     new_style = ET.SubElement(placemark, '{%s}Style' % namespace_kml)
                     icon_style = ET.SubElement(new_style, '{%s}IconStyle' % namespace_kml)
                     ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
-                    ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.6"
+                    ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.8"
                     icon = ET.SubElement(icon_style, '{%s}Icon' % namespace_kml)
                     ET.SubElement(icon, '{%s}href' % namespace_kml).text = "http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png"
                     
                     label_style = ET.SubElement(new_style, '{%s}LabelStyle' % namespace_kml)
                     ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_baru)
-                    ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.6"
+                    ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
 
-    # ==========================================
-    # 5. LOGIKA C: Copy FDT ke Slack Hanger 
-    # ==========================================
+    # 5. LOGIKA C: Copy FDT ke Slack Hanger
     list_placemark_template = []
     for folder in root.findall('.//kml:Folder', ns):
         kategori_efektif = get_kategori(folder)
@@ -316,13 +297,13 @@ def proses_kmz(input_path, output_path, extract_dir):
 
                 icon_style = ET.SubElement(new_style, '{%s}IconStyle' % namespace_kml)
                 ET.SubElement(icon_style, '{%s}color' % namespace_kml).text = hex_to_kml_color("#FFFFFF")
-                ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.6"
+                ET.SubElement(icon_style, '{%s}scale' % namespace_kml).text = "0.8"
                 icon = ET.SubElement(icon_style, '{%s}Icon' % namespace_kml)
                 ET.SubElement(icon, '{%s}href' % namespace_kml).text = "http://maps.google.com/mapfiles/kml/shapes/target.png"
                 
                 label_style = ET.SubElement(new_style, '{%s}LabelStyle' % namespace_kml)
                 ET.SubElement(label_style, '{%s}color' % namespace_kml).text = hex_to_kml_color("#FFFFFF")
-                ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.6"
+                ET.SubElement(label_style, '{%s}scale' % namespace_kml).text = "0.8"
                 
                 list_placemark_template.append(placemark_copy)
 
@@ -355,7 +336,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip mutakhir: anti-error XML (unbound prefix), skala dapat disesuaikan per folder, dan warna teks sinkron 100%.")
+st.write("Skrip stabil: Skala seragam 0.8, sinkronisasi warna teks & ikon, serta anti-korup struktur KML.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -378,7 +359,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah sangat rapi.")
+                st.success("Berhasil! File KMZ Anda sudah bersih dan sesuai standar.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
