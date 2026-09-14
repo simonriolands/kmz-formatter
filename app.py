@@ -142,18 +142,21 @@ def proses_kmz(input_path, output_path, extract_dir):
         style_id_name = f"shared_style_{kat.replace(' ', '_')}"
         buat_shared_style(style_id_name, aturan['warna'], aturan['warna_teks'], aturan['ukuran'], aturan['icon'], hide_balloon=True)
 
-    # Daftarkan shared styles FDT menggunakan cross-hairs.png dan skala 0.8 sesuai ketentuan
+    # PERUBAHAN: FDT hide_balloon diubah jadi False agar pop-up deskripsi muncul!
     cross_hair_icon = "http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png"
-    buat_shared_style("shared_style_fdt_96c", "#FF0000", "#FF0000", "0.8", cross_hair_icon, hide_balloon=True)
-    buat_shared_style("shared_style_fdt_72c", "#550000", "#550000", "0.8", cross_hair_icon, hide_balloon=True)
-    buat_shared_style("shared_style_fdt_48c", "#AA00FF", "#AA00FF", "0.8", cross_hair_icon, hide_balloon=True)
-    buat_shared_style("shared_style_fdt_sharing", "#FFFFFF", "#FFFFFF", "0.8", cross_hair_icon, hide_balloon=True)
+    buat_shared_style("shared_style_fdt_96c", "#FF0000", "#FF0000", "0.8", cross_hair_icon, hide_balloon=False)
+    buat_shared_style("shared_style_fdt_72c", "#550000", "#550000", "0.8", cross_hair_icon, hide_balloon=False)
+    buat_shared_style("shared_style_fdt_48c", "#AA00FF", "#AA00FF", "0.8", cross_hair_icon, hide_balloon=False)
+    buat_shared_style("shared_style_fdt_sharing", "#FFFFFF", "#FFFFFF", "0.8", cross_hair_icon, hide_balloon=False)
 
-    buat_shared_line_style("shared_style_cable_24c", "#00FF00", "3", hide_balloon=True)
-    buat_shared_line_style("shared_style_cable_36c", "#FF00FF", "3", hide_balloon=True)
-    buat_shared_line_style("shared_style_cable_48c", "#AA00FF", "3", hide_balloon=True)
-    buat_shared_line_style("shared_style_sling_wire", "#00FFFF", "3", hide_balloon=True)
-    buat_shared_line_style("shared_style_dist_cable", "", "3", hide_balloon=True)
+    # PERUBAHAN: CABLE hide_balloon diubah jadi False agar pop-up kabel muncul!
+    buat_shared_line_style("shared_style_cable_24c", "#00FF00", "3", hide_balloon=False)
+    buat_shared_line_style("shared_style_cable_36c", "#FF00FF", "3", hide_balloon=False)
+    buat_shared_line_style("shared_style_cable_48c", "#AA00FF", "3", hide_balloon=False)
+    buat_shared_line_style("shared_style_sling_wire", "#00FFFF", "3", hide_balloon=False)
+    buat_shared_line_style("shared_style_dist_cable", "", "3", hide_balloon=False)
+    
+    # Slack hanger dibiarkan True karena hanya titik sekunder
     buat_shared_style("shared_style_slack_hanger_copy", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/target.png", hide_balloon=True)
 
     parent_map = {c: p for p in root.iter() for c in p}
@@ -178,7 +181,6 @@ def proses_kmz(input_path, output_path, extract_dir):
         if nama_elem is None: nama_elem = folder_elem.find('name')
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
-    # Bersihkan style di level folder reguler (Lindungi Boundary, Cable, dan FDT)
     for folder_elem in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_f_elem = folder_elem.find('kml:name', ns)
         if nama_f_elem is None: nama_f_elem = folder_elem.find('name')
@@ -196,7 +198,6 @@ def proses_kmz(input_path, output_path, extract_dir):
         
         for placemark in folder.findall('./kml:Placemark', ns) + folder.findall('./Placemark'):
             if not is_kecuali:
-                # Hapus deskripsi, snippet, balloon, dan timestamp
                 tags_to_purge = [
                     'kml:description', 'kml:Snippet', 'gx:balloonVisibility', 'description', 'Snippet', 'balloonVisibility',
                     'kml:TimeStamp', 'kml:TimeSpan', 'TimeStamp', 'TimeSpan', 'kml:ExtendedData', 'ExtendedData'
@@ -258,9 +259,6 @@ def proses_kmz(input_path, output_path, extract_dir):
                     style_url_elem = ET.SubElement(placemark, '{%s}styleUrl' % namespace_kml)
                     style_url_elem.text = fdt_style_ref
 
-    # ==========================================
-    # LOGIKA C: Copy FDT ke Slack Hanger
-    # ==========================================
     list_placemark_template = []
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         kategori_efektif = get_kategori(folder)
@@ -319,7 +317,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip stabil: Pembersihan timestamp & deskripsi, ikon FDT cross-hairs.png dengan warna core akurat, serta skala 0.8 mutlak.")
+st.write("Skrip mutakhir: Pop-up untuk FDT dan CABLE akan tetap muncul, dengan sinkronisasi gaya tanpa error.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -342,7 +340,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah bersih dan sesuai standar.")
+                st.success("Berhasil! File KMZ Anda sudah bersih dan pop-up FDT/CABLE berfungsi kembali.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
