@@ -46,9 +46,9 @@ def proses_kmz(input_path, output_path, extract_dir):
         "EXISTING POLE PARTNER 7-4", "EXISTING POLE PARTNER 9-4"
     ]
 
-    # DAFTAR URUTAN STANDAR FOLDER (FDT Ditambahkan)
+    # DAFTAR URUTAN STANDAR FOLDER DI DALAM "LINE" (FDT Dihapus dari daftar ini)
     daftar_folder_standar = [
-        "BOUNDARY FAT", "FAT", "FDT", "HP COVER", "HP UNCOVER", 
+        "BOUNDARY FAT", "FAT", "HP COVER", "HP UNCOVER", 
         "EXISTING POLE EMR 7-2.5", "EXISTING POLE EMR 7-3", "EXISTING POLE EMR 7-4", "EXISTING POLE EMR 9-4", 
         "EXISTING POLE PARTNER 7-4", "EXISTING POLE PARTNER 9-4", 
         "NEW POLE 7-2.5", "NEW POLE 7-3", "NEW POLE 7-4", "NEW POLE 9-4", 
@@ -226,13 +226,13 @@ def proses_kmz(input_path, output_path, extract_dir):
                 for elemen in elemen_lainnya:
                     folder.append(elemen)
                 
-                # Masukkan sub-folder secara berurutan sesuai standar
+                # Masukkan sub-folder secara berurutan sesuai standar (TANPA FDT)
                 for nama_target in daftar_folder_standar:
                     if nama_target in sub_folders_dict:
                         folder.append(sub_folders_dict[nama_target])
                         del sub_folders_dict[nama_target]
                 
-                # Jika ada folder tambahan yang tidak ada di standar, letakkan di bagian paling bawah
+                # Jika ada folder tambahan lain, letakkan di bagian paling bawah
                 for sisa_nama, sisa_folder in sub_folders_dict.items():
                     folder.append(sisa_folder)
     # ==========================================
@@ -374,7 +374,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip mutakhir: Penambahan otomatis & pengurutan sub-folder di dalam LINE, pop-up FDT/CABLE dipertahankan, serta skala 0.8.")
+st.write("Skrip mutakhir: Susunan folder Line akurat (tanpa FDT), pop-up dipertahankan, dan skala 0.8 mutlak.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -397,7 +397,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah memiliki folder yang lengkap dan terurut.")
+                st.success("Berhasil! File KMZ Anda sudah bersih dan folder Line tersusun rapi.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
