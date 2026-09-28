@@ -46,10 +46,13 @@ def proses_kmz(input_path, output_path, extract_dir):
         "EXISTING POLE PARTNER 7-4", "EXISTING POLE PARTNER 9-4"
     ]
 
+    # DAFTAR URUTAN STANDAR FOLDER (FDT Ditambahkan)
     daftar_folder_standar = [
-        "BOUNDARY FAT", "FAT", "HP COVER", "HP UNCOVER", "EXISTING POLE EMR 7-2.5", "EXISTING POLE EMR 7-3", 
-        "EXISTING POLE EMR 7-4", "EXISTING POLE EMR 9-4", "EXISTING POLE PARTNER 7-4", "EXISTING POLE PARTNER 9-4", 
-        "NEW POLE 7-2.5", "NEW POLE 7-3", "NEW POLE 7-4", "NEW POLE 9-4", "DISTRIBUTION CABLE", "SLACK HANGER", "SLING WIRE"
+        "BOUNDARY FAT", "FAT", "FDT", "HP COVER", "HP UNCOVER", 
+        "EXISTING POLE EMR 7-2.5", "EXISTING POLE EMR 7-3", "EXISTING POLE EMR 7-4", "EXISTING POLE EMR 9-4", 
+        "EXISTING POLE PARTNER 7-4", "EXISTING POLE PARTNER 9-4", 
+        "NEW POLE 7-2.5", "NEW POLE 7-3", "NEW POLE 7-4", "NEW POLE 9-4", 
+        "DISTRIBUTION CABLE", "SLACK HANGER", "SLING WIRE"
     ]
 
     with zipfile.ZipFile(input_path, 'r') as kmz:
@@ -138,25 +141,24 @@ def proses_kmz(input_path, output_path, extract_dir):
             ET.SubElement(line_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_garis)
         ET.SubElement(line_style, '{%s}width' % namespace_kml).text = ketebalan
 
+    # Daftarkan shared styles standar
     for kat, aturan in style_rules_titik.items():
         style_id_name = f"shared_style_{kat.replace(' ', '_')}"
         buat_shared_style(style_id_name, aturan['warna'], aturan['warna_teks'], aturan['ukuran'], aturan['icon'], hide_balloon=True)
 
-    # PERUBAHAN: FDT hide_balloon diubah jadi False agar pop-up deskripsi muncul!
+    # Daftarkan shared styles FDT (hide_balloon=False)
     cross_hair_icon = "http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png"
     buat_shared_style("shared_style_fdt_96c", "#FF0000", "#FF0000", "0.8", cross_hair_icon, hide_balloon=False)
     buat_shared_style("shared_style_fdt_72c", "#550000", "#550000", "0.8", cross_hair_icon, hide_balloon=False)
     buat_shared_style("shared_style_fdt_48c", "#AA00FF", "#AA00FF", "0.8", cross_hair_icon, hide_balloon=False)
     buat_shared_style("shared_style_fdt_sharing", "#FFFFFF", "#FFFFFF", "0.8", cross_hair_icon, hide_balloon=False)
 
-    # PERUBAHAN: CABLE hide_balloon diubah jadi False agar pop-up kabel muncul!
+    # Daftarkan shared styles CABLE (hide_balloon=False)
     buat_shared_line_style("shared_style_cable_24c", "#00FF00", "3", hide_balloon=False)
     buat_shared_line_style("shared_style_cable_36c", "#FF00FF", "3", hide_balloon=False)
     buat_shared_line_style("shared_style_cable_48c", "#AA00FF", "3", hide_balloon=False)
     buat_shared_line_style("shared_style_sling_wire", "#00FFFF", "3", hide_balloon=False)
     buat_shared_line_style("shared_style_dist_cable", "", "3", hide_balloon=False)
-    
-    # Slack hanger dibiarkan True karena hanya titik sekunder
     buat_shared_style("shared_style_slack_hanger_copy", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/target.png", hide_balloon=True)
 
     parent_map = {c: p for p in root.iter() for c in p}
@@ -181,6 +183,61 @@ def proses_kmz(input_path, output_path, extract_dir):
         if nama_elem is None: nama_elem = folder_elem.find('name')
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
+    # ==========================================
+    # PENAMBAHAN & PENGURUTAN FOLDER STANDAR DI DALAM "LINE"
+    # ==========================================
+    for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
+        nama_folder_elem = folder.find('kml:name', ns)
+        if nama_folder_elem is None: nama_folder_elem = folder.find('name')
+        
+        if nama_folder_elem is not None and nama_folder_elem.text:
+            nama_folder = nama_folder_elem.text.strip().upper()
+            
+            # Jika nama folder berawalan "LINE"
+            if nama_folder.startswith("LINE"):
+                semua_elemen_anak = list(folder)
+                sub_folders_dict = {}
+                elemen_lainnya = []
+                
+                # Pisahkan folder anak dari elemen lain (seperti nama, gaya, dll)
+                for anak in semua_elemen_anak:
+                    tag_name = anak.tag.split('}')[-1]
+                    if tag_name == 'Folder':
+                        sub_nama_elem = anak.find('kml:name', ns)
+                        if sub_nama_elem is None: sub_nama_elem = anak.find('name')
+                        sub_nama = sub_nama_elem.text.strip().upper() if (sub_nama_elem is not None and sub_nama_elem.text) else ""
+                        sub_folders_dict[sub_nama] = anak
+                    else:
+                        elemen_lainnya.append(anak)
+                
+                # Tambahkan folder yang tidak ada ke dalam antrean dictionary
+                for nama_target in daftar_folder_standar:
+                    if nama_target not in sub_folders_dict:
+                        folder_baru = ET.Element(f'{{{namespace_kml}}}Folder')
+                        nama_elemen_baru = ET.SubElement(folder_baru, f'{{{namespace_kml}}}name')
+                        nama_elemen_baru.text = nama_target
+                        sub_folders_dict[nama_target] = folder_baru
+                
+                # Kosongkan isi folder LINE saat ini
+                for anak in semua_elemen_anak:
+                    folder.remove(anak)
+                
+                # Masukkan kembali elemen non-folder agar nama LINE tetap di atas
+                for elemen in elemen_lainnya:
+                    folder.append(elemen)
+                
+                # Masukkan sub-folder secara berurutan sesuai standar
+                for nama_target in daftar_folder_standar:
+                    if nama_target in sub_folders_dict:
+                        folder.append(sub_folders_dict[nama_target])
+                        del sub_folders_dict[nama_target]
+                
+                # Jika ada folder tambahan yang tidak ada di standar, letakkan di bagian paling bawah
+                for sisa_nama, sisa_folder in sub_folders_dict.items():
+                    folder.append(sisa_folder)
+    # ==========================================
+
+    # Bersihkan style di level folder reguler (Lindungi Boundary, Cable, dan FDT)
     for folder_elem in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_f_elem = folder_elem.find('kml:name', ns)
         if nama_f_elem is None: nama_f_elem = folder_elem.find('name')
@@ -317,7 +374,7 @@ def proses_kmz(input_path, output_path, extract_dir):
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip mutakhir: Pop-up untuk FDT dan CABLE akan tetap muncul, dengan sinkronisasi gaya tanpa error.")
+st.write("Skrip mutakhir: Penambahan otomatis & pengurutan sub-folder di dalam LINE, pop-up FDT/CABLE dipertahankan, serta skala 0.8.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -340,7 +397,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! File KMZ Anda sudah bersih dan pop-up FDT/CABLE berfungsi kembali.")
+                st.success("Berhasil! File KMZ Anda sudah memiliki folder yang lengkap dan terurut.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
