@@ -18,7 +18,7 @@ def hex_to_kml_color(hex_color):
         return f"ff{b}{g}{r}".lower()
     return hex_color
 
-def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
+def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, cari_teks, ganti_teks):
     # ==========================================
     # 1. KONFIGURASI FOLDER STANDAR BERDASARKAN TIPE
     # ==========================================
@@ -155,7 +155,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
     buat_shared_style("shared_style_HP_COVER", "#00FF00", "#00FF00", "0.8", "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png", hide_balloon=True)
     buat_shared_style("shared_style_HP_UNCOVER", "#FF0000", "#FF0000", "0.8", "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png", hide_balloon=True)
     
-    # Styles untuk Titik (Feeder / Subfeeder / Poles)
+    # Styles untuk Titik
     buat_shared_style("style_olt", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/ranger_station.png", hide_balloon=True)
     buat_shared_style("style_jc_48", "#AA00FF", "#AA00FF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/forbidden.png", hide_balloon=True)
     buat_shared_style("style_jc_144", "#FFFF00", "#FFFF00", "0.8", "http://maps.google.com/mapfiles/kml/shapes/forbidden.png", hide_balloon=True)
@@ -214,16 +214,21 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
     # ==========================================
-    # 3. PENGHAPUSAN FOLDER ILEGAL & PENYUSUNAN STANDAR
+    # 3. PENGHAPUSAN FOLDER ILEGAL & PENYUSUNAN STANDAR (Termasuk Rename Line jika dicari)
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_folder_elem = folder.find('kml:name', ns)
         if nama_folder_elem is None: nama_folder_elem = folder.find('name')
         
         if nama_folder_elem is not None and nama_folder_elem.text:
-            nama_folder = nama_folder_elem.text.strip().upper()
+            nama_folder = nama_folder_elem.text.strip()
             
-            if nama_folder.startswith("LINE"):
+            # --- FITUR RENAME (FIND & REPLACE) PADA NAMA FOLDER / LINE ---
+            if cari_teks and cari_teks in nama_folder:
+                nama_folder_elem.text = nama_folder.replace(cari_teks, ganti_teks)
+                nama_folder = nama_folder_elem.text
+            
+            if nama_folder.upper().startswith("LINE"):
                 semua_elemen_anak = list(folder)
                 sub_folders_dict = {}
                 elemen_lainnya = []
@@ -263,7 +268,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                 folder_elem.remove(f_style)
 
     # ==========================================
-    # 4. APLIKASI GAYA, PEMBERSIHAN TAG & PENGHAPUSAN SPASI NAMA
+    # 4. APLIKASI GAYA, HAPUS SPASI & RENAME PLACEMARK
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         kategori_efektif = get_kategori(folder)
@@ -290,12 +295,20 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
             nama_placemark_elem = placemark.find('kml:name', ns)
             if nama_placemark_elem is None: nama_placemark_elem = placemark.find('name')
             
-            # --- HAPUS SPASI PADA NAMA JIKA KATEGORI SESUAI ---
             if nama_placemark_elem is not None and nama_placemark_elem.text:
+                teks_nama = nama_placemark_elem.text.strip()
+                
+                # --- FITUR RENAME (FIND & REPLACE) PADA PLACEMARK ---
+                if cari_teks and cari_teks in teks_nama:
+                    teks_nama = teks_nama.replace(cari_teks, ganti_teks)
+                
+                # --- HAPUS SPASI JIKA KATEGORI SESUAI ---
                 if kategori_efektif in target_hapus_spasi:
-                    nama_placemark_elem.text = nama_placemark_elem.text.replace(" ", "")
-            
-            nama_placemark = nama_placemark_elem.text.strip().upper() if nama_placemark_elem is not None and nama_placemark_elem.text else ""
+                    teks_nama = teks_nama.replace(" ", "")
+                
+                nama_placemark_elem.text = teks_nama
+
+            nama_placemark = nama_placemark_elem.text.upper() if nama_placemark_elem is not None and nama_placemark_elem.text else ""
             style_ref = None
 
             if kategori_efektif in folder_existing_pole:
@@ -466,17 +479,28 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
 # ==========================================
 st.set_page_config(page_title="Universal KMZ Formatter", page_icon="🌍")
 
-st.title("🌍 Universal KMZ Auto-Formatter")
-st.write("Skrip mutakhir: Hapus spasi otomatis pada placemark target, penyesuaian Folder, Salin FAT & FDT, dan perlindungan Tipe KMZ.")
+st.title("🌍 Universal KMZ Auto-Formatter & Renamer")
+st.write("Standarisasi format (Cluster/Subfeeder/Feeder), pembersihan spasi, dan **Rename Massal (Find & Replace)**.")
 
+# Pilihan Tipe KMZ
 tipe_kmz = st.selectbox("📌 Pilih Tipe Format KMZ:", ["Cluster", "Subfeeder", "Feeder"])
 
+st.markdown("---")
+st.subheader("✏️ Fitur Ubah Nama (Rename Massal / Find & Replace)")
+st.write("Opsional: Masukkan teks yang ingin dicari dan diganti pada seluruh nama placemark/line.")
+col1, col2 = st.columns(2)
+with col1:
+    cari_teks = st.text_input("Teks yang dicari (Contoh: ABCD)")
+with col2:
+    ganti_teks = st.text_input("Ganti menjadi (Contoh: ABCE)")
+
+st.markdown("---")
 uploaded_file = st.file_uploader(f"Unggah file KMZ ({tipe_kmz})", type=["kmz"])
 
 if uploaded_file is not None:
     st.info("File berhasil diunggah!")
     
-    if st.button("🚀 Proses dan Standarisasi KMZ"):
+    if st.button("🚀 Proses, Rename, dan Standarisasi KMZ"):
         with st.spinner(f'Memproses file spasial menggunakan standar {tipe_kmz}...'):
             try:
                 temp_dir = tempfile.mkdtemp()
@@ -487,12 +511,13 @@ if uploaded_file is not None:
                 with open(input_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
                 
-                proses_kmz(input_path, output_path, extract_dir, tipe_kmz)
+                # Kirim parameter cari_teks dan ganti_teks ke fungsi
+                proses_kmz(input_path, output_path, extract_dir, tipe_kmz, cari_teks, ganti_teks)
                 
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success(f"Berhasil! File KMZ Anda telah distandarisasi (dengan nama placemark yang bersih dari spasi).")
+                st.success(f"Berhasil! File KMZ Anda telah distandarisasi dan di-rename secara massal.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
