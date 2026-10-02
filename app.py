@@ -55,6 +55,14 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
         "EXISTING POLE PARTNER 7-4", "EXISTING POLE PARTNER 9-4"
     ]
 
+    target_hapus_spasi = [
+        "BOUNDARY FAT", "EXISTING POLE EMR 7-2.5", "EXISTING POLE EMR 7-3", 
+        "EXISTING POLE EMR 7-4", "EXISTING POLE EMR 7-5", "EXISTING POLE EMR 9-4", 
+        "EXISTING POLE EMR 9-5", "EXISTING POLE PARTNER 7-4", "EXISTING POLE PARTNER 9-4", 
+        "FAT", "FDT", "NEW POLE 7-2.5", "NEW POLE 7-3", "NEW POLE 7-4", 
+        "NEW POLE 7-5", "NEW POLE 9-4", "NEW POLE 9-5", "SLACK HANGER"
+    ]
+
     with zipfile.ZipFile(input_path, 'r') as kmz:
         kmz.extractall(extract_dir)
 
@@ -255,7 +263,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                 folder_elem.remove(f_style)
 
     # ==========================================
-    # 4. APLIKASI GAYA & PEMBERSIHAN PLACEMARK
+    # 4. APLIKASI GAYA, PEMBERSIHAN TAG & PENGHAPUSAN SPASI NAMA
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         kategori_efektif = get_kategori(folder)
@@ -281,8 +289,13 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
 
             nama_placemark_elem = placemark.find('kml:name', ns)
             if nama_placemark_elem is None: nama_placemark_elem = placemark.find('name')
+            
+            # --- HAPUS SPASI PADA NAMA JIKA KATEGORI SESUAI ---
+            if nama_placemark_elem is not None and nama_placemark_elem.text:
+                if kategori_efektif in target_hapus_spasi:
+                    nama_placemark_elem.text = nama_placemark_elem.text.replace(" ", "")
+            
             nama_placemark = nama_placemark_elem.text.strip().upper() if nama_placemark_elem is not None and nama_placemark_elem.text else ""
-
             style_ref = None
 
             if kategori_efektif in folder_existing_pole:
@@ -299,9 +312,9 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                     elif "9-4" in kategori_efektif: style_ref = "#style_pole_new_red"
                 elif jenis_kmz == "Subfeeder":
                     if "7-5" in kategori_efektif or "9-5" in kategori_efektif or "7-4" in kategori_efektif: 
-                        style_ref = "#style_pole_new_green"  # NEW POLE 7-4, 7-5, 9-5 jadi Hijau (#00FF00)[cite: 2]
+                        style_ref = "#style_pole_new_green" 
                     elif "9-4" in kategori_efektif: 
-                        style_ref = "#style_pole_new_red"     # NEW POLE 9-4 tetap Merah (#FF0000)[cite: 2]
+                        style_ref = "#style_pole_new_red"    
                 elif jenis_kmz == "Feeder":
                     if "7-5" in kategori_efektif or "7-4" in kategori_efektif: style_ref = "#style_pole_new_green"
                     elif "9-5" in kategori_efektif or "9-4" in kategori_efektif: style_ref = "#style_pole_new_red"
@@ -454,7 +467,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
 st.set_page_config(page_title="Universal KMZ Formatter", page_icon="🌍")
 
 st.title("🌍 Universal KMZ Auto-Formatter")
-st.write("Mendukung pembersihan dan standarisasi mutlak untuk **Cluster, Subfeeder, dan Feeder**.")
+st.write("Skrip mutakhir: Hapus spasi otomatis pada placemark target, penyesuaian Folder, Salin FAT & FDT, dan perlindungan Tipe KMZ.")
 
 tipe_kmz = st.selectbox("📌 Pilih Tipe Format KMZ:", ["Cluster", "Subfeeder", "Feeder"])
 
@@ -479,7 +492,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success(f"Berhasil! File KMZ Anda telah distandarisasi sesuai aturan {tipe_kmz}.")
+                st.success(f"Berhasil! File KMZ Anda telah distandarisasi (dengan nama placemark yang bersih dari spasi).")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
