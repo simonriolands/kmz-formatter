@@ -46,6 +46,7 @@ def proses_kmz(input_path, output_path, extract_dir):
         "EXISTING POLE PARTNER 7-4", "EXISTING POLE PARTNER 9-4"
     ]
 
+    # DAFTAR STANDAR MUTLAK FOLDER DI DALAM "LINE"
     daftar_folder_standar = [
         "BOUNDARY FAT", "FAT", "HP COVER", "HP UNCOVER", 
         "EXISTING POLE EMR 7-2.5", "EXISTING POLE EMR 7-3", "EXISTING POLE EMR 7-4", "EXISTING POLE EMR 9-4", 
@@ -158,6 +159,9 @@ def proses_kmz(input_path, output_path, extract_dir):
     buat_shared_line_style("shared_style_cable_48c", "#AA00FF", "3", hide_balloon=False)
     buat_shared_line_style("shared_style_sling_wire", "#00FFFF", "3", hide_balloon=False)
     buat_shared_line_style("shared_style_dist_cable", "", "3", hide_balloon=False)
+    
+    # Shared style untuk FDT yang dicopy ke Slack Hanger (Warna Putih)
+    buat_shared_style("shared_style_slack_hanger_copy", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/target.png", hide_balloon=True)
 
     parent_map = {c: p for p in root.iter() for c in p}
 
@@ -182,7 +186,7 @@ def proses_kmz(input_path, output_path, extract_dir):
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
     # ==========================================
-    # PENAMBAHAN & PENGURUTAN FOLDER STANDAR DI DALAM "LINE"
+    # PENAMBAHAN, PENGURUTAN, & PENGHAPUSAN FOLDER NON-STANDAR DI DALAM "LINE"
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_folder_elem = folder.find('kml:name', ns)
@@ -196,6 +200,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                 sub_folders_dict = {}
                 elemen_lainnya = []
                 
+                # Pisahkan folder dan elemen lainnya
                 for anak in semua_elemen_anak:
                     tag_name = anak.tag.split('}')[-1]
                     if tag_name == 'Folder':
@@ -206,6 +211,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                     else:
                         elemen_lainnya.append(anak)
                 
+                # Buat folder standar yang belum ada
                 for nama_target in daftar_folder_standar:
                     if nama_target not in sub_folders_dict:
                         folder_baru = ET.Element(f'{{{namespace_kml}}}Folder')
@@ -213,16 +219,21 @@ def proses_kmz(input_path, output_path, extract_dir):
                         nama_elemen_baru.text = nama_target
                         sub_folders_dict[nama_target] = folder_baru
                 
+                # Bersihkan semua isi folder LINE saat ini
                 for anak in semua_elemen_anak:
                     folder.remove(anak)
+                    
+                # Kembalikan elemen non-folder (seperti nama LINE itu sendiri)
                 for elemen in elemen_lainnya:
                     folder.append(elemen)
+                    
+                # HANYA masukkan sub-folder yang ada di daftar standar secara berurutan
                 for nama_target in daftar_folder_standar:
                     if nama_target in sub_folders_dict:
                         folder.append(sub_folders_dict[nama_target])
-                        del sub_folders_dict[nama_target]
-                for sisa_nama, sisa_folder in sub_folders_dict.items():
-                    folder.append(sisa_folder)
+                        
+                # Folder yang tidak ada di 'daftar_folder_standar' sengaja TIDAK di-append kembali,
+                # sehingga otomatis TERHAPUS dari struktur file.
 
     # Bersihkan style di level folder reguler
     for folder_elem in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
@@ -233,7 +244,7 @@ def proses_kmz(input_path, output_path, extract_dir):
             for f_style in list(folder_elem.findall('kml:Style', ns) + folder_elem.findall('Style') + folder_elem.findall('kml:StyleMap', ns) + folder_elem.findall('StyleMap')):
                 folder_elem.remove(f_style)
 
-    # Pemrosesan dan penerapan style
+    # Pemrosesan dan penerapan style pada Placemark
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         kategori_efektif = get_kategori(folder)
         if not kategori_efektif:
@@ -305,7 +316,7 @@ def proses_kmz(input_path, output_path, extract_dir):
                     style_url_elem.text = fdt_style_ref
 
     # ==========================================
-    # LOGIKA C TERBARU: Copy FAT ke Slack Hanger (Jika Slack Hanger Kosong)
+    # LOGIKA C.1: Copy FAT ke Slack Hanger per Line (jika kosong)
     # ==========================================
     for folder_line in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_line_elem = folder_line.find('kml:name', ns)
@@ -315,7 +326,6 @@ def proses_kmz(input_path, output_path, extract_dir):
             folder_fat = None
             folder_slack = None
             
-            # Cari sub-folder FAT dan SLACK HANGER dalam LINE tersebut
             for sub_folder in folder_line.findall('./kml:Folder', ns) + folder_line.findall('./Folder'):
                 sub_nama_elem = sub_folder.find('kml:name', ns)
                 if sub_nama_elem is None: sub_nama_elem = sub_folder.find('name')
@@ -327,27 +337,68 @@ def proses_kmz(input_path, output_path, extract_dir):
                     elif sub_nama == "SLACK HANGER":
                         folder_slack = sub_folder
             
-            # Eksekusi Copy jika kedua folder ditemukan
             if folder_fat is not None and folder_slack is not None:
                 isi_slack = folder_slack.findall('./kml:Placemark', ns) + folder_slack.findall('./Placemark')
-                
-                # Jika Slack Hanger masih KOSONG, lakukan penyalinan dari FAT
                 if len(isi_slack) == 0:
                     for titik_fat in folder_fat.findall('./kml:Placemark', ns) + folder_fat.findall('./Placemark'):
                         placemark_copy = copy.deepcopy(titik_fat)
-                        
-                        # Ubah styleUrl dari FAT menjadi Slack Hanger
                         s_url = placemark_copy.find('kml:styleUrl', ns)
                         if s_url is None: s_url = placemark_copy.find('styleUrl')
-                        
                         if s_url is not None:
                             s_url.text = "#shared_style_SLACK_HANGER"
                         else:
                             new_s_url = ET.SubElement(placemark_copy, '{%s}styleUrl' % namespace_kml)
                             new_s_url.text = "#shared_style_SLACK_HANGER"
-                            
-                        # Masukkan placemark copy ke dalam folder SLACK HANGER
                         folder_slack.append(placemark_copy)
+
+    # ==========================================
+    # LOGIKA C.2: Copy FDT ke Slack Hanger (EXT.SLACK.FDT ke Line Pertama)
+    # ==========================================
+    list_placemark_template = []
+    for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
+        kategori_efektif = get_kategori(folder)
+        if kategori_efektif == "FDT":
+            for titik_asli in folder.findall('./kml:Placemark', ns) + folder.findall('./Placemark'): 
+                placemark_copy = copy.deepcopy(titik_asli) 
+
+                tags_to_purge_copy = [
+                    'kml:description', 'kml:Snippet', 'gx:balloonVisibility', 'description', 'Snippet', 'balloonVisibility',
+                    'kml:TimeStamp', 'kml:TimeSpan', 'TimeStamp', 'TimeSpan', 'kml:ExtendedData', 'ExtendedData'
+                ]
+                for hapus_tag in tags_to_purge_copy:
+                    tag_elem = placemark_copy.find(hapus_tag, ns)
+                    if tag_elem is not None:
+                        placemark_copy.remove(tag_elem)
+                        
+                for tag_to_remove in ['kml:styleUrl', 'kml:Style', 'kml:StyleMap', 'styleUrl', 'Style', 'StyleMap']:
+                    for elem_to_remove in list(placemark_copy.findall(tag_to_remove, ns) + placemark_copy.findall(tag_to_remove)):
+                        placemark_copy.remove(elem_to_remove)
+
+                nama_elem = placemark_copy.find('kml:name', ns)
+                if nama_elem is None: nama_elem = placemark_copy.find('name')
+                if nama_elem is None: nama_elem = ET.SubElement(placemark_copy, '{%s}name' % namespace_kml)
+                nama_elem.text = "EXT.SLACK.FDT"
+
+                style_url_elem = ET.SubElement(placemark_copy, '{%s}styleUrl' % namespace_kml)
+                style_url_elem.text = "#shared_style_slack_hanger_copy"
+                
+                list_placemark_template.append(placemark_copy)
+
+    if list_placemark_template:
+        berhasil_paste = False
+        for folder_induk in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
+            nama_induk = folder_induk.find('kml:name', ns)
+            if nama_induk is None: nama_induk = folder_induk.find('name')
+            if nama_induk is not None and nama_induk.text and nama_induk.text.strip().upper().startswith("LINE"):
+                for folder_anak in folder_induk.findall('./kml:Folder', ns) + folder_induk.findall('./Folder'):
+                    nama_anak = folder_anak.find('kml:name', ns)
+                    if nama_anak is None: nama_anak = folder_anak.find('name')
+                    if nama_anak is not None and nama_anak.text and nama_anak.text.strip().upper() == "SLACK HANGER":
+                        for p_template in list_placemark_template:
+                            folder_anak.append(copy.deepcopy(p_template))
+                        berhasil_paste = True
+                        break
+            if berhasil_paste: break
 
     tree.write(file_kml, encoding='utf-8', xml_declaration=True)
 
@@ -358,13 +409,10 @@ def proses_kmz(input_path, output_path, extract_dir):
                 arcname = os.path.relpath(file_path, extract_dir)
                 new_kmz.write(file_path, arcname)
 
-# ==========================================
-# ANTARMUKA WEB (STREAMLIT)
-# ==========================================
 st.set_page_config(page_title="KMZ Auto-Formatter", page_icon="🌍")
 
 st.title("🌍 KMZ Auto-Formatter & Cleaner")
-st.write("Skrip otomatis: Mengcopy FAT ke Slack Hanger (jika kosong) per Line, perlindungan folder FDT/Cable, dan susunan Line standar.")
+st.write("Skrip final mutakhir: Menghapus folder non-standar, menyalin FAT & FDT ke Slack Hanger otomatis, dan standardisasi skala 0.8.")
 
 uploaded_file = st.file_uploader("Pilih file KMZ", type=["kmz"])
 
@@ -387,7 +435,7 @@ if uploaded_file is not None:
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success("Berhasil! FAT otomatis disalin ke Slack Hanger untuk masing-masing Line.")
+                st.success("Berhasil! File KMZ Anda sudah bersih dari folder ilegal dan terstandarisasi sempurna.")
                 
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
