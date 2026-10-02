@@ -142,12 +142,12 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
             ET.SubElement(line_style, '{%s}color' % namespace_kml).text = hex_to_kml_color(warna_garis)
         ET.SubElement(line_style, '{%s}width' % namespace_kml).text = ketebalan
 
-    # Styles untuk Cluster (Legacy)
+    # Styles untuk Cluster
     buat_shared_style("shared_style_FAT", "#FFFF00", "#FFFF00", "0.8", "http://maps.google.com/mapfiles/kml/shapes/triangle.png", hide_balloon=True)
     buat_shared_style("shared_style_HP_COVER", "#00FF00", "#00FF00", "0.8", "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png", hide_balloon=True)
     buat_shared_style("shared_style_HP_UNCOVER", "#FF0000", "#FF0000", "0.8", "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png", hide_balloon=True)
     
-    # Styles untuk Titik Baru (Feeder / Subfeeder / Poles)
+    # Styles untuk Titik (Feeder / Subfeeder / Poles)
     buat_shared_style("style_olt", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/ranger_station.png", hide_balloon=True)
     buat_shared_style("style_jc_48", "#AA00FF", "#AA00FF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/forbidden.png", hide_balloon=True)
     buat_shared_style("style_jc_144", "#FFFF00", "#FFFF00", "0.8", "http://maps.google.com/mapfiles/kml/shapes/forbidden.png", hide_balloon=True)
@@ -156,7 +156,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
     
     buat_shared_style("style_slack_ext", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/target.png", hide_balloon=True)
     buat_shared_style("style_slack_new", "#FF0000", "#FF0000", "0.8", "http://maps.google.com/mapfiles/kml/shapes/target.png", hide_balloon=True)
-    buat_shared_style("shared_style_slack_hanger_copy", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/target.png", hide_balloon=True) # FDT Target Putih
+    buat_shared_style("shared_style_slack_hanger_copy", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/target.png", hide_balloon=True)
     
     buat_shared_style("style_pole_ext", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png", hide_balloon=True)
     buat_shared_style("style_pole_new_green", "#00FF00", "#00FF00", "0.8", "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png", hide_balloon=True)
@@ -244,7 +244,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                 for nama_target in daftar_folder_standar:
                     if nama_target in sub_folders_dict:
                         folder.append(sub_folders_dict[nama_target])
-                # Folder yang tidak terdaftar sengaja tidak dikembalikan (Terhapus)
 
     # Bersihkan gaya internal di level folder
     for folder_elem in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
@@ -286,7 +285,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
 
             style_ref = None
 
-            # LOGIKA PENENTUAN GAYA (CLUSTER, SUBFEEDER, FEEDER)
             if kategori_efektif in folder_existing_pole:
                 if nama_placemark_elem is not None and nama_placemark_elem.text:
                     if "EXT." not in nama_placemark:
@@ -300,8 +298,10 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                     elif "7-4" in kategori_efektif: style_ref = "#style_pole_new_green"
                     elif "9-4" in kategori_efektif: style_ref = "#style_pole_new_red"
                 elif jenis_kmz == "Subfeeder":
-                    if "7-5" in kategori_efektif or "9-5" in kategori_efektif: style_ref = "#style_pole_new_green"
-                    elif "7-4" in kategori_efektif or "9-4" in kategori_efektif: style_ref = "#style_pole_new_red"
+                    if "7-5" in kategori_efektif or "9-5" in kategori_efektif or "7-4" in kategori_efektif: 
+                        style_ref = "#style_pole_new_green"  # NEW POLE 7-4, 7-5, 9-5 jadi Hijau (#00FF00)[cite: 2]
+                    elif "9-4" in kategori_efektif: 
+                        style_ref = "#style_pole_new_red"     # NEW POLE 9-4 tetap Merah (#FF0000)[cite: 2]
                 elif jenis_kmz == "Feeder":
                     if "7-5" in kategori_efektif or "7-4" in kategori_efektif: style_ref = "#style_pole_new_green"
                     elif "9-5" in kategori_efektif or "9-4" in kategori_efektif: style_ref = "#style_pole_new_red"
@@ -340,13 +340,21 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                 if desc_elem is None: desc_elem = placemark.find('description')
                 desc_text = desc_elem.text.strip().upper() if desc_elem is not None and desc_elem.text else ""
                 
-                if "96C" in desc_text: style_ref = "#shared_style_fdt_96c"
-                elif "72C" in desc_text: style_ref = "#shared_style_fdt_72c"
-                elif "48C" in desc_text: style_ref = "#shared_style_fdt_48c"
-                elif "SHARING" in desc_text: style_ref = "#shared_style_fdt_sharing"
-                
-            if style_ref:
-                # Bersihkan styleUrl lama yang mungkin tertinggal di FDT / CABLE
+                fdt_style_ref = None
+                if "96C" in desc_text: fdt_style_ref = "#shared_style_fdt_96c"
+                elif "72C" in desc_text: fdt_style_ref = "#shared_style_fdt_72c"
+                elif "48C" in desc_text: fdt_style_ref = "#shared_style_fdt_48c"
+                elif "SHARING" in desc_text: fdt_style_ref = "#shared_style_fdt_sharing"
+                    
+                if fdt_style_ref is not None:
+                    for tag_to_remove in ['kml:styleUrl', 'kml:Style', 'kml:StyleMap', 'styleUrl', 'Style', 'StyleMap']:
+                        for elem_to_remove in list(placemark.findall(tag_to_remove, ns) + placemark.findall(tag_to_remove)):
+                            placemark.remove(elem_to_remove)
+
+                    style_url_elem = ET.SubElement(placemark, '{%s}styleUrl' % namespace_kml)
+                    style_url_elem.text = fdt_style_ref
+
+            if style_ref and kategori_efektif != "FDT":
                 for tag_to_remove in ['kml:styleUrl', 'styleUrl']:
                     for elem_to_remove in list(placemark.findall(tag_to_remove, ns) + placemark.findall(tag_to_remove)):
                         placemark.remove(elem_to_remove)
@@ -356,7 +364,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
     # ==========================================
     # 5. LOGIKA PENYALINAN TITIK KE SLACK HANGER
     # ==========================================
-    # C.1: Copy FAT ke Slack Hanger per Line (Aman diabaikan untuk Subfeeder/Feeder karena tidak ada FAT)
     for folder_line in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_line_elem = folder_line.find('kml:name', ns)
         if nama_line_elem is None: nama_line_elem = folder_line.find('name')
@@ -387,7 +394,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                             new_s_url.text = "#style_slack_new"
                         folder_slack.append(placemark_copy)
 
-    # C.2: Copy FDT ke Slack Hanger (EXT.SLACK.FDT ke Line Pertama - Abaikan jika FDT tidak ada)
     list_placemark_template = []
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         kategori_efektif = get_kategori(folder)
@@ -450,7 +456,6 @@ st.set_page_config(page_title="Universal KMZ Formatter", page_icon="🌍")
 st.title("🌍 Universal KMZ Auto-Formatter")
 st.write("Mendukung pembersihan dan standarisasi mutlak untuk **Cluster, Subfeeder, dan Feeder**.")
 
-# Tambahkan dropdown untuk memilih mode operasi
 tipe_kmz = st.selectbox("📌 Pilih Tipe Format KMZ:", ["Cluster", "Subfeeder", "Feeder"])
 
 uploaded_file = st.file_uploader(f"Unggah file KMZ ({tipe_kmz})", type=["kmz"])
@@ -469,7 +474,6 @@ if uploaded_file is not None:
                 with open(input_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
                 
-                # Masukkan argumen tipe_kmz ke fungsi pemrosesan
                 proses_kmz(input_path, output_path, extract_dir, tipe_kmz)
                 
                 with open(output_path, "rb") as f:
