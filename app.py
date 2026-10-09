@@ -210,7 +210,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
     # ==========================================
-    # 3. PENYUSUNAN STANDAR SUBFOLDER LINE (RESOLUSI KONTRADIKSI)
+    # 3. PENYUSUNAN STANDAR SUBFOLDER LINE
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_folder_elem = folder.find('kml:name', ns)
@@ -234,8 +234,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
                     else:
                         elemen_lainnya.append(anak)
                 
-                # Hanya menyuntikkan template Folder Kosong secara otomatis JIKA format APD.
-                # Jika PRE ABD / ABD, cukup urutkan folder yang sudah ada sesuai standar.
                 for nama_target in daftar_folder_standar:
                     if nama_target not in sub_folders_dict:
                         if format_tahapan == "APD":
@@ -244,19 +242,16 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
                             nama_elemen_baru.text = nama_target
                             sub_folders_dict[nama_target] = folder_baru
                 
-                # Bersihkan isi LINE lalu susun ulang
                 for anak in semua_elemen_anak:
                     folder.remove(anak)
                 
                 for elemen in elemen_lainnya:
                     folder.append(elemen)
                 
-                # Memasukkan folder berdasar urutan target
                 for nama_target in daftar_folder_standar:
                     if nama_target in sub_folders_dict:
                         folder.append(sub_folders_dict[nama_target])
 
-    # Bersihkan style internal di level folder
     for folder_elem in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_f_elem = folder_elem.find('kml:name', ns)
         if nama_f_elem is None: nama_f_elem = folder_elem.find('name')
@@ -420,11 +415,9 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
                     if sub_nama == "FAT": folder_fat = sub_folder
                     elif sub_nama == "SLACK HANGER": folder_slack = sub_folder
             
-            # Jika ada folder FAT berisi data, jalankan duplikasi ke SLACK HANGER
             if folder_fat is not None:
                 isi_fat = folder_fat.findall('./kml:Placemark', ns) + folder_fat.findall('./Placemark')
                 if len(isi_fat) > 0:
-                    # Jika di PRE ABD folder SLACK HANGER tidak ada, buat secara dinamis
                     if folder_slack is None:
                         folder_slack = ET.Element(f'{{{namespace_kml}}}Folder')
                         slack_name_elem = ET.SubElement(folder_slack, f'{{{namespace_kml}}}name')
@@ -493,17 +486,22 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
     # ==========================================
     if format_tahapan == "PRE ABD / ABD":
         def bersihkan_folder_kosong(elemen):
-            anak_folder = [e for e in elemen if e.tag.split('}')[-1] == 'Folder']
-            for f in anak_folder:
-                bersihkan_folder_kosong(f)
+            # Gunakan list(elemen) agar iterasi tidak error saat elemen dihapus dari induknya
+            for anak in list(elemen):
+                # Rekursi ke dalam (Bottom-Up)
+                bersihkan_folder_kosong(anak)
                 
-                punya_placemark = len(f.findall('.//{%s}Placemark' % namespace_kml) + f.findall('.//Placemark')) > 0
-                punya_subfolder = any(sub.tag.split('}')[-1] == 'Folder' for sub in f)
-                punya_konten_lain = any(sub.tag.split('}')[-1] in ['GroundOverlay', 'NetworkLink', 'ScreenOverlay'] for sub in f)
-                
-                if not (punya_placemark or punya_subfolder or punya_konten_lain):
-                    elemen.remove(f)
+                # Cek jika anak yang sedang dievaluasi adalah Folder
+                if anak.tag.split('}')[-1] == 'Folder':
+                    # Cek apakah folder ini masih punya isi SETELAH semua anaknya dibersihkan
+                    ada_placemark = len(anak.findall('.//{%s}Placemark' % namespace_kml) + anak.findall('.//Placemark')) > 0
+                    ada_subfolder = any(sub.tag.split('}')[-1] == 'Folder' for sub in anak)
+                    ada_lainnya = any(sub.tag.split('}')[-1] in ['GroundOverlay', 'NetworkLink', 'ScreenOverlay'] for sub in anak)
+                    
+                    if not (ada_placemark or ada_subfolder or ada_lainnya):
+                        elemen.remove(anak)
 
+        # Proses pembersihan dimulai dari 'root' ke seluruh bagian struktur XML file KML
         bersihkan_folder_kosong(root)
 
     tree.write(file_kml, encoding='utf-8', xml_declaration=True)
@@ -530,7 +528,7 @@ with col_pilihan2:
     format_tahapan = st.selectbox("📂 Format Tahapan KMZ:", ["APD", "PRE ABD / ABD"])
 
 if format_tahapan == "PRE ABD / ABD":
-    st.caption("ℹ️ Mode PRE ABD / ABD aktif: Folder kosong tidak akan ditambahkan, dan folder kosong yang sudah ada akan dihapus.")
+    st.caption("ℹ️ Mode PRE ABD / ABD aktif: Folder kosong tidak akan ditambahkan, dan SEMUA folder kosong di KMZ akan dihapus hingga bersih.")
 else:
     st.caption("ℹ️ Mode APD aktif: Semua sub-folder standar akan di-generate (walaupun masih kosong) sebagai template.")
 
@@ -558,7 +556,7 @@ if uploaded_file is not None:
                 
                 pesan_sukses = f"Berhasil! KMZ diproses untuk {tipe_kmz} ({format_tahapan})."
                 if format_tahapan == "PRE ABD / ABD":
-                    pesan_sukses += " Data dirapikan tanpa menyisakan folder kosong."
+                    pesan_sukses += " Data dirapikan dan seluruh folder kosong telah dihapus permanen."
                 st.success(pesan_sukses)
                 
                 nama_file_hasil = f"{format_tahapan.replace(' ', '_').replace('/', '_')}_{tipe_kmz}_{uploaded_file.name}"
