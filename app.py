@@ -18,7 +18,7 @@ def hex_to_kml_color(hex_color):
         return f"ff{b}{g}{r}".lower()
     return hex_color
 
-def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan, list_rename):
+def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
     # ==========================================
     # 1. KONFIGURASI FOLDER STANDAR BERDASARKAN TIPE
     # ==========================================
@@ -213,16 +213,8 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan, 
         if nama_elem is None: nama_elem = folder_elem.find('name')
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
 
-    def terapkan_rename(teks):
-        if not teks:
-            return teks
-        for cari, ganti in list_rename:
-            if cari and cari.strip():
-                teks = teks.replace(cari.strip(), ganti.strip() if ganti else "")
-        return teks
-
     # ==========================================
-    # 3. PENGHAPUSAN FOLDER ILEGAL & PENYUSUNAN STANDAR
+    # 3. PENYUSUNAN STANDAR SUBFOLDER LINE
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_folder_elem = folder.find('kml:name', ns)
@@ -230,8 +222,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan, 
         
         if nama_folder_elem is not None and nama_folder_elem.text:
             nama_folder = nama_folder_elem.text.strip()
-            nama_folder = terapkan_rename(nama_folder)
-            nama_folder_elem.text = nama_folder
             
             if nama_folder.upper().startswith("LINE"):
                 semua_elemen_anak = list(folder)
@@ -273,7 +263,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan, 
                 folder_elem.remove(f_style)
 
     # ==========================================
-    # 4. APLIKASI GAYA, HAPUS SPASI, MULTI RENAME & CABLE FORMATTER
+    # 4. APLIKASI GAYA, HAPUS SPASI & CABLE FORMATTER
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         kategori_efektif = get_kategori(folder)
@@ -303,7 +293,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan, 
             
             if nama_placemark_elem is not None and nama_placemark_elem.text:
                 teks_nama = nama_placemark_elem.text.strip()
-                teks_nama = terapkan_rename(teks_nama)
                 
                 if kategori_efektif in target_hapus_spasi:
                     teks_nama = teks_nama.replace(" ", "")
@@ -492,12 +481,10 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan, 
     # ==========================================
     if format_tahapan == "PRE ABD / ABD":
         def bersihkan_folder_kosong(elemen):
-            # Cek anak Folder secara rekursif
             anak_folder = [e for e in elemen if e.tag.split('}')[-1] == 'Folder']
             for f in anak_folder:
                 bersihkan_folder_kosong(f)
                 
-                # Cek apakah folder tersebut punya Placemark, GroundOverlay, NetworkLink, atau Subfolder
                 punya_placemark = len(f.findall('.//{%s}Placemark' % namespace_kml) + f.findall('.//Placemark')) > 0
                 punya_subfolder = any(sub.tag.split('}')[-1] == 'Folder' for sub in f)
                 punya_konten_lain = any(sub.tag.split('}')[-1] in ['GroundOverlay', 'NetworkLink', 'ScreenOverlay'] for sub in f)
@@ -521,8 +508,8 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan, 
 # ==========================================
 st.set_page_config(page_title="Universal KMZ Formatter", page_icon="🌍")
 
-st.title("🌍 Universal KMZ Auto-Formatter & Multi-Renamer")
-st.write("Standarisasi format Cluster/Subfeeder/Feeder, penamaan FO Cable, Multi Rename, dan opsi filter folder kosong.")
+st.title("🌍 Universal KMZ Auto-Formatter")
+st.write("Standarisasi format Cluster/Subfeeder/Feeder, penataan style kabel FO, dan filter folder kosong otomatis.")
 
 col_pilihan1, col_pilihan2 = st.columns(2)
 with col_pilihan1:
@@ -534,36 +521,12 @@ if format_tahapan == "PRE ABD / ABD":
     st.caption("ℹ️ Mode PRE ABD / ABD aktif: Semua folder standar yang tidak memiliki objek/placemark akan otomatis dihapus.")
 
 st.markdown("---")
-st.subheader("✏️ Fitur Multi Rename Massal (Find & Replace)")
-st.write("Masukkan teks lama yang ingin dicari dan teks penggantinya pada 4 slot di bawah ini secara bersamaan:")
-
-col1, col2 = st.columns(2)
-with col1:
-    cari1 = st.text_input("Cari Teks 1", placeholder="Contoh: ABCD")
-    cari2 = st.text_input("Cari Teks 2", placeholder="")
-    cari3 = st.text_input("Cari Teks 3", placeholder="")
-    cari4 = st.text_input("Cari Teks 4", placeholder="")
-
-with col2:
-    ganti1 = st.text_input("Ganti Menjadi 1", placeholder="Contoh: ABCE")
-    ganti2 = st.text_input("Ganti Menjadi 2", placeholder="")
-    ganti3 = st.text_input("Ganti Menjadi 3", placeholder="")
-    ganti4 = st.text_input("Ganti Menjadi 4", placeholder="")
-
-list_rename = [
-    (cari1, ganti1),
-    (cari2, ganti2),
-    (cari3, ganti3),
-    (cari4, ganti4)
-]
-
-st.markdown("---")
 uploaded_file = st.file_uploader(f"Unggah file KMZ ({tipe_kmz} - {format_tahapan})", type=["kmz"])
 
 if uploaded_file is not None:
     st.info("File berhasil diunggah!")
     
-    if st.button("🚀 Proses, Standarisasi & Filter KMZ"):
+    if st.button("🚀 Proses dan Standarisasi KMZ"):
         with st.spinner(f'Memproses {tipe_kmz} dengan format {format_tahapan}...'):
             try:
                 temp_dir = tempfile.mkdtemp()
@@ -574,7 +537,7 @@ if uploaded_file is not None:
                 with open(input_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
                 
-                proses_kmz(input_path, output_path, extract_dir, tipe_kmz, format_tahapan, list_rename)
+                proses_kmz(input_path, output_path, extract_dir, tipe_kmz, format_tahapan)
                 
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
