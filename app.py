@@ -18,7 +18,7 @@ def hex_to_kml_color(hex_color):
         return f"ff{b}{g}{r}".lower()
     return hex_color
 
-def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
+def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan, list_rename):
     # ==========================================
     # 1. KONFIGURASI FOLDER STANDAR BERDASARKAN TIPE
     # ==========================================
@@ -93,9 +93,9 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
         if '<kml>' in new_kml_tag:
             new_kml_tag = new_kml_tag.replace('<kml>', '<kml >')
         
-        for ns, url in namespaces_wajib:
-            if ns not in new_kml_tag:
-                new_kml_tag = new_kml_tag.replace('<kml ', f'<kml {ns}={url} ')
+        for ns_prefix, url in namespaces_wajib:
+            if ns_prefix not in new_kml_tag:
+                new_kml_tag = new_kml_tag.replace('<kml ', f'<kml {ns_prefix}={url} ')
         
         if new_kml_tag != kml_tag:
             kml_data = kml_data.replace(kml_tag, new_kml_tag)
@@ -155,7 +155,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
     buat_shared_style("shared_style_HP_COVER", "#00FF00", "#00FF00", "0.8", "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png", hide_balloon=True)
     buat_shared_style("shared_style_HP_UNCOVER", "#FF0000", "#FF0000", "0.8", "http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png", hide_balloon=True)
     
-    # Styles untuk Titik (Feeder / Subfeeder / Poles)
+    # Styles Titik Pole & Node
     buat_shared_style("style_olt", "#FFFFFF", "#FFFFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/ranger_station.png", hide_balloon=True)
     buat_shared_style("style_jc_48", "#AA00FF", "#AA00FF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/forbidden.png", hide_balloon=True)
     buat_shared_style("style_jc_144", "#FFFF00", "#FFFF00", "0.8", "http://maps.google.com/mapfiles/kml/shapes/forbidden.png", hide_balloon=True)
@@ -172,14 +172,14 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
     buat_shared_style("style_pole_new_purple", "#AA00FF", "#AA00FF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png", hide_balloon=True)
     buat_shared_style("style_pole_new_cyan", "#00FFFF", "#00FFFF", "0.8", "http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png", hide_balloon=True)
 
-    # Styles Kabel dan Garis
-    buat_shared_line_style("style_cable_24", "#00FF00", "3", hide_balloon=False)
-    buat_shared_line_style("style_cable_36", "#FF00FF", "3", hide_balloon=False)
-    buat_shared_line_style("style_cable_48", "#AA00FF", "3", hide_balloon=False)
-    buat_shared_line_style("style_cable_96", "#FF0000", "3", hide_balloon=False)
-    buat_shared_line_style("style_cable_144", "#FFFF00", "3", hide_balloon=False)
-    buat_shared_line_style("style_cable_288", "#FFAA00", "3", hide_balloon=False)
-    buat_shared_line_style("shared_style_sling_wire", "#00FFFF", "3", hide_balloon=False)
+    # Styles Kabel dan Jalur (Width 3.0)
+    buat_shared_line_style("style_cable_24", "#00FF00", "3.0", hide_balloon=False)
+    buat_shared_line_style("style_cable_36", "#FF00FF", "3.0", hide_balloon=False)
+    buat_shared_line_style("style_cable_48", "#AA00FF", "3.0", hide_balloon=False)
+    buat_shared_line_style("style_cable_96", "#FF0000", "3.0", hide_balloon=False)
+    buat_shared_line_style("style_cable_144", "#FFFF00", "3.0", hide_balloon=False)
+    buat_shared_line_style("style_cable_288", "#FFAA00", "3.0", hide_balloon=False)
+    buat_shared_line_style("shared_style_sling_wire", "#00FFFF", "3.0", hide_balloon=False)
 
     # Styles FDT
     cross_hair_icon = "http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png"
@@ -205,13 +205,21 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                 if nama_elem is None: nama_elem = curr.find('name')
                 if nama_elem is not None and nama_elem.text:
                     nama = nama_elem.text.strip().upper()
-                    if nama in valid_folders or "BOUNDARY" in nama:
+                    if nama in valid_folders or "BOUNDARY" in nama or "CABLE" in nama:
                         return nama
             curr = parent_map.get(curr)
         
         nama_elem = folder_elem.find('kml:name', ns)
         if nama_elem is None: nama_elem = folder_elem.find('name')
         return nama_elem.text.strip().upper() if (nama_elem is not None and nama_elem.text) else ""
+
+    def terapkan_rename(teks):
+        if not teks:
+            return teks
+        for cari, ganti in list_rename:
+            if cari and cari.strip():
+                teks = teks.replace(cari.strip(), ganti.strip() if ganti else "")
+        return teks
 
     # ==========================================
     # 3. PENGHAPUSAN FOLDER ILEGAL & PENYUSUNAN STANDAR
@@ -221,9 +229,11 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
         if nama_folder_elem is None: nama_folder_elem = folder.find('name')
         
         if nama_folder_elem is not None and nama_folder_elem.text:
-            nama_folder = nama_folder_elem.text.strip().upper()
+            nama_folder = nama_folder_elem.text.strip()
+            nama_folder = terapkan_rename(nama_folder)
+            nama_folder_elem.text = nama_folder
             
-            if nama_folder.startswith("LINE"):
+            if nama_folder.upper().startswith("LINE"):
                 semua_elemen_anak = list(folder)
                 sub_folders_dict = {}
                 elemen_lainnya = []
@@ -253,7 +263,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                     if nama_target in sub_folders_dict:
                         folder.append(sub_folders_dict[nama_target])
 
-    # Bersihkan gaya internal di level folder
+    # Bersihkan style internal di level folder
     for folder_elem in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         nama_f_elem = folder_elem.find('kml:name', ns)
         if nama_f_elem is None: nama_f_elem = folder_elem.find('name')
@@ -263,7 +273,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                 folder_elem.remove(f_style)
 
     # ==========================================
-    # 4. APLIKASI GAYA, PEMBERSIHAN TAG & PENGHAPUSAN SPASI NAMA
+    # 4. APLIKASI GAYA, HAPUS SPASI, MULTI RENAME & CABLE FORMATTER
     # ==========================================
     for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
         kategori_efektif = get_kategori(folder)
@@ -288,17 +298,51 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                         placemark.remove(elem_to_remove)
 
             nama_placemark_elem = placemark.find('kml:name', ns)
-            if nama_placemark_elem is None: nama_placemark_elem = placemark.find('name')
+            if nama_placemark_elem is None: 
+                nama_placemark_elem = placemark.find('name')
             
-            # --- HAPUS SPASI PADA NAMA JIKA KATEGORI SESUAI ---
             if nama_placemark_elem is not None and nama_placemark_elem.text:
+                teks_nama = nama_placemark_elem.text.strip()
+                teks_nama = terapkan_rename(teks_nama)
+                
                 if kategori_efektif in target_hapus_spasi:
-                    nama_placemark_elem.text = nama_placemark_elem.text.replace(" ", "")
-            
-            nama_placemark = nama_placemark_elem.text.strip().upper() if nama_placemark_elem is not None and nama_placemark_elem.text else ""
+                    teks_nama = teks_nama.replace(" ", "")
+                
+                nama_placemark_elem.text = teks_nama
+
+            nama_placemark = nama_placemark_elem.text.upper() if nama_placemark_elem is not None and nama_placemark_elem.text else ""
             style_ref = None
 
-            if kategori_efektif in folder_existing_pole:
+            # Standarisasi Placemark Kabel
+            if "CABLE" in kategori_efektif:
+                if any(x in nama_placemark for x in ["288C", "288 CORE", "288"]):
+                    if nama_placemark_elem is not None:
+                        nama_placemark_elem.text = "FO 288C/24T"
+                    style_ref = "#style_cable_288"
+                elif any(x in nama_placemark for x in ["144C", "144 CORE", "144"]):
+                    if nama_placemark_elem is not None:
+                        nama_placemark_elem.text = "FO 144C/12T"
+                    style_ref = "#style_cable_144"
+                elif any(x in nama_placemark for x in ["96C", "96 CORE", "96"]):
+                    if nama_placemark_elem is not None:
+                        nama_placemark_elem.text = "FO 96C/8T"
+                    style_ref = "#style_cable_96"
+                elif any(x in nama_placemark for x in ["48C", "48 CORE", "48"]):
+                    if nama_placemark_elem is not None:
+                        nama_placemark_elem.text = "FO 48C/4T"
+                    style_ref = "#style_cable_48"
+                elif any(x in nama_placemark for x in ["36C", "36 CORE", "36"]):
+                    if nama_placemark_elem is not None:
+                        nama_placemark_elem.text = "FO 36C/3T"
+                    style_ref = "#style_cable_36"
+                elif any(x in nama_placemark for x in ["24C", "24 CORE", "24"]):
+                    if nama_placemark_elem is not None:
+                        nama_placemark_elem.text = "FO 24C/2T"
+                    style_ref = "#style_cable_24"
+                else:
+                    style_ref = "#style_cable_24"
+
+            elif kategori_efektif in folder_existing_pole:
                 if nama_placemark_elem is not None and nama_placemark_elem.text:
                     if "EXT." not in nama_placemark:
                         nama_placemark_elem.text = "EXT." + nama_placemark_elem.text.strip()
@@ -333,15 +377,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
             elif kategori_efektif == "OLT":
                 style_ref = "#style_olt"
 
-            elif kategori_efektif == "CABLE" or kategori_efektif == "DISTRIBUTION CABLE":
-                if "24" in nama_placemark: style_ref = "#style_cable_24"
-                elif "36" in nama_placemark: style_ref = "#style_cable_36"
-                elif "48" in nama_placemark: style_ref = "#style_cable_48"
-                elif "96" in nama_placemark: style_ref = "#style_cable_96"
-                elif "144" in nama_placemark: style_ref = "#style_cable_144"
-                elif "288" in nama_placemark: style_ref = "#style_cable_288"
-                else: style_ref = "#style_cable_24" 
-                
             elif kategori_efektif == "SLING WIRE":
                 style_ref = "#shared_style_sling_wire"
                 
@@ -452,6 +487,26 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
                         break
             if berhasil_paste: break
 
+    # ==========================================
+    # 6. PEMBERSIHAN FOLDER KOSONG (KHUSUS PRE ABD / ABD)
+    # ==========================================
+    if format_tahapan == "PRE ABD / ABD":
+        def bersihkan_folder_kosong(elemen):
+            # Cek anak Folder secara rekursif
+            anak_folder = [e for e in elemen if e.tag.split('}')[-1] == 'Folder']
+            for f in anak_folder:
+                bersihkan_folder_kosong(f)
+                
+                # Cek apakah folder tersebut punya Placemark, GroundOverlay, NetworkLink, atau Subfolder
+                punya_placemark = len(f.findall('.//{%s}Placemark' % namespace_kml) + f.findall('.//Placemark')) > 0
+                punya_subfolder = any(sub.tag.split('}')[-1] == 'Folder' for sub in f)
+                punya_konten_lain = any(sub.tag.split('}')[-1] in ['GroundOverlay', 'NetworkLink', 'ScreenOverlay'] for sub in f)
+                
+                if not (punya_placemark or punya_subfolder or punya_konten_lain):
+                    elemen.remove(f)
+
+        bersihkan_folder_kosong(root)
+
     tree.write(file_kml, encoding='utf-8', xml_declaration=True)
 
     with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as new_kmz:
@@ -466,18 +521,50 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz):
 # ==========================================
 st.set_page_config(page_title="Universal KMZ Formatter", page_icon="🌍")
 
-st.title("🌍 Universal KMZ Auto-Formatter")
-st.write("Skrip mutakhir: Hapus spasi otomatis pada placemark target, penyesuaian Folder, Salin FAT & FDT, dan perlindungan Tipe KMZ.")
+st.title("🌍 Universal KMZ Auto-Formatter & Multi-Renamer")
+st.write("Standarisasi format Cluster/Subfeeder/Feeder, penamaan FO Cable, Multi Rename, dan opsi filter folder kosong.")
 
-tipe_kmz = st.selectbox("📌 Pilih Tipe Format KMZ:", ["Cluster", "Subfeeder", "Feeder"])
+col_pilihan1, col_pilihan2 = st.columns(2)
+with col_pilihan1:
+    tipe_kmz = st.selectbox("📌 Tipe KMZ:", ["Cluster", "Subfeeder", "Feeder"])
+with col_pilihan2:
+    format_tahapan = st.selectbox("📂 Format Tahapan KMZ:", ["APD", "PRE ABD / ABD"])
 
-uploaded_file = st.file_uploader(f"Unggah file KMZ ({tipe_kmz})", type=["kmz"])
+if format_tahapan == "PRE ABD / ABD":
+    st.caption("ℹ️ Mode PRE ABD / ABD aktif: Semua folder standar yang tidak memiliki objek/placemark akan otomatis dihapus.")
+
+st.markdown("---")
+st.subheader("✏️ Fitur Multi Rename Massal (Find & Replace)")
+st.write("Masukkan teks lama yang ingin dicari dan teks penggantinya pada 4 slot di bawah ini secara bersamaan:")
+
+col1, col2 = st.columns(2)
+with col1:
+    cari1 = st.text_input("Cari Teks 1", placeholder="Contoh: ABCD")
+    cari2 = st.text_input("Cari Teks 2", placeholder="")
+    cari3 = st.text_input("Cari Teks 3", placeholder="")
+    cari4 = st.text_input("Cari Teks 4", placeholder="")
+
+with col2:
+    ganti1 = st.text_input("Ganti Menjadi 1", placeholder="Contoh: ABCE")
+    ganti2 = st.text_input("Ganti Menjadi 2", placeholder="")
+    ganti3 = st.text_input("Ganti Menjadi 3", placeholder="")
+    ganti4 = st.text_input("Ganti Menjadi 4", placeholder="")
+
+list_rename = [
+    (cari1, ganti1),
+    (cari2, ganti2),
+    (cari3, ganti3),
+    (cari4, ganti4)
+]
+
+st.markdown("---")
+uploaded_file = st.file_uploader(f"Unggah file KMZ ({tipe_kmz} - {format_tahapan})", type=["kmz"])
 
 if uploaded_file is not None:
     st.info("File berhasil diunggah!")
     
-    if st.button("🚀 Proses dan Standarisasi KMZ"):
-        with st.spinner(f'Memproses file spasial menggunakan standar {tipe_kmz}...'):
+    if st.button("🚀 Proses, Standarisasi & Filter KMZ"):
+        with st.spinner(f'Memproses {tipe_kmz} dengan format {format_tahapan}...'):
             try:
                 temp_dir = tempfile.mkdtemp()
                 input_path = os.path.join(temp_dir, "input.kmz")
@@ -487,17 +574,21 @@ if uploaded_file is not None:
                 with open(input_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
                 
-                proses_kmz(input_path, output_path, extract_dir, tipe_kmz)
+                proses_kmz(input_path, output_path, extract_dir, tipe_kmz, format_tahapan, list_rename)
                 
                 with open(output_path, "rb") as f:
                     hasil_bytes = f.read()
                 
-                st.success(f"Berhasil! File KMZ Anda telah distandarisasi (dengan nama placemark yang bersih dari spasi).")
+                pesan_sukses = f"Berhasil! KMZ diproses untuk {tipe_kmz} ({format_tahapan})."
+                if format_tahapan == "PRE ABD / ABD":
+                    pesan_sukses += " Folder-folder kosong telah dibersihkan."
+                st.success(pesan_sukses)
                 
+                nama_file_hasil = f"{format_tahapan.replace(' ', '_').replace('/', '_')}_{tipe_kmz}_{uploaded_file.name}"
                 st.download_button(
                     label="⬇️ Download File KMZ Hasil",
                     data=hasil_bytes,
-                    file_name=f"STANDAR_{tipe_kmz}_{uploaded_file.name}",
+                    file_name=nama_file_hasil,
                     mime="application/vnd.google-earth.kmz"
                 )
                 
