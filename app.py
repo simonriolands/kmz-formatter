@@ -184,6 +184,18 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
     buat_shared_style("shared_style_fdt_48c", "#AA00FF", "#AA00FF", "0.8", cross_hair_icon, hide_balloon=False)
     buat_shared_style("shared_style_fdt_sharing", "#FFFFFF", "#FFFFFF", "0.8", cross_hair_icon, hide_balloon=False)
 
+    # ==========================================
+    # 2.5 PERBAIKAN NAMA FOLDER BOUNDARY
+    # ==========================================
+    for folder in root.findall('.//kml:Folder', ns) + root.findall('.//Folder'):
+        nama_folder_elem = folder.find('kml:name', ns)
+        if nama_folder_elem is None: nama_folder_elem = folder.find('name')
+        
+        if nama_folder_elem is not None and nama_folder_elem.text:
+            nama_asli = nama_folder_elem.text.strip().upper()
+            if "BOUNDARY" in nama_asli and "CLUSTER" not in nama_asli:
+                nama_folder_elem.text = "BOUNDARY FAT"
+
     parent_map = {c: p for p in root.iter() for c in p}
 
     def get_kategori(folder_elem):
@@ -300,30 +312,22 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
             nama_placemark = nama_placemark_elem.text.upper() if nama_placemark_elem is not None and nama_placemark_elem.text else ""
             style_ref = None
 
+            # ----------------------------------------------------
+            # LOGIKA KABEL: HANYA MENGUBAH WARNA (STYLE URL), 
+            # NAMA PATH ASLI TETAP DIPERTAHANKAN
+            # ----------------------------------------------------
             if "CABLE" in kategori_efektif:
                 if any(x in nama_placemark for x in ["288C", "288 CORE", "288"]):
-                    if nama_placemark_elem is not None:
-                        nama_placemark_elem.text = "FO 288C/24T"
                     style_ref = "#style_cable_288"
                 elif any(x in nama_placemark for x in ["144C", "144 CORE", "144"]):
-                    if nama_placemark_elem is not None:
-                        nama_placemark_elem.text = "FO 144C/12T"
                     style_ref = "#style_cable_144"
                 elif any(x in nama_placemark for x in ["96C", "96 CORE", "96"]):
-                    if nama_placemark_elem is not None:
-                        nama_placemark_elem.text = "FO 96C/8T"
                     style_ref = "#style_cable_96"
                 elif any(x in nama_placemark for x in ["48C", "48 CORE", "48"]):
-                    if nama_placemark_elem is not None:
-                        nama_placemark_elem.text = "FO 48C/4T"
                     style_ref = "#style_cable_48"
                 elif any(x in nama_placemark for x in ["36C", "36 CORE", "36"]):
-                    if nama_placemark_elem is not None:
-                        nama_placemark_elem.text = "FO 36C/3T"
                     style_ref = "#style_cable_36"
                 elif any(x in nama_placemark for x in ["24C", "24 CORE", "24"]):
-                    if nama_placemark_elem is not None:
-                        nama_placemark_elem.text = "FO 24C/2T"
                     style_ref = "#style_cable_24"
                 else:
                     style_ref = "#style_cable_24"
@@ -486,14 +490,10 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
     # ==========================================
     if format_tahapan == "PRE ABD / ABD":
         def bersihkan_folder_kosong(elemen):
-            # Gunakan list(elemen) agar iterasi tidak error saat elemen dihapus dari induknya
             for anak in list(elemen):
-                # Rekursi ke dalam (Bottom-Up)
                 bersihkan_folder_kosong(anak)
                 
-                # Cek jika anak yang sedang dievaluasi adalah Folder
                 if anak.tag.split('}')[-1] == 'Folder':
-                    # Cek apakah folder ini masih punya isi SETELAH semua anaknya dibersihkan
                     ada_placemark = len(anak.findall('.//{%s}Placemark' % namespace_kml) + anak.findall('.//Placemark')) > 0
                     ada_subfolder = any(sub.tag.split('}')[-1] == 'Folder' for sub in anak)
                     ada_lainnya = any(sub.tag.split('}')[-1] in ['GroundOverlay', 'NetworkLink', 'ScreenOverlay'] for sub in anak)
@@ -501,7 +501,6 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
                     if not (ada_placemark or ada_subfolder or ada_lainnya):
                         elemen.remove(anak)
 
-        # Proses pembersihan dimulai dari 'root' ke seluruh bagian struktur XML file KML
         bersihkan_folder_kosong(root)
 
     tree.write(file_kml, encoding='utf-8', xml_declaration=True)
@@ -519,7 +518,7 @@ def proses_kmz(input_path, output_path, extract_dir, jenis_kmz, format_tahapan):
 st.set_page_config(page_title="Universal KMZ Formatter", page_icon="🌍")
 
 st.title("🌍 Universal KMZ Auto-Formatter")
-st.write("Standarisasi format Cluster/Subfeeder/Feeder, penataan style kabel FO, dan filter folder kosong otomatis.")
+st.write("Standarisasi format Cluster/Subfeeder/Feeder, pewarnaan kabel FO, dan filter folder kosong otomatis.")
 
 col_pilihan1, col_pilihan2 = st.columns(2)
 with col_pilihan1:
